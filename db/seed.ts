@@ -3,6 +3,9 @@
  * Neon に投入するシードスクリプト。
  *
  * 実行方法: `npm run db:seed`（`.env.local` の読み込みは `db/client.ts` が行う）。
+ * `.env.local` に `SEED_ORG_ID`（Clerk Organizations の組織ID、`org_xxx`）の設定が
+ * 必要（セクション3で `orgId` による組織スコープを導入したため）。Clerk Dashboard の
+ * Organizations 一覧、または実際にアプリで組織を作成した後の URL 等から確認できる。
  *
  * 冪等性のため、投入前に既存の行を全削除してから再投入する（開発用シードのため。
  * 本番データを想定した差分マイグレーションではない）。削除順は外部キー制約に従い
@@ -19,11 +22,23 @@ import { buildSeedRows } from "./seed-data";
 import { categories, members, projects, tasks } from "./schema";
 
 async function main() {
+  const orgId = process.env.SEED_ORG_ID;
+  if (!orgId) {
+    throw new Error(
+      "SEED_ORG_ID が未設定です。.env.example を参考に .env.local に、投入先の " +
+        "Clerk Organization ID（org_xxx）を設定してください。",
+    );
+  }
+
   const categoriesResult = categoriesSchema.safeParse(categoriesData);
   const membersResult = membersSchema.safeParse(membersData);
   const projectsResult = projectsSchema.safeParse(projectsData);
 
-  if (!categoriesResult.success || !membersResult.success || !projectsResult.success) {
+  if (
+    !categoriesResult.success ||
+    !membersResult.success ||
+    !projectsResult.success
+  ) {
     const errors = [
       !categoriesResult.success &&
         `categories.json: ${categoriesResult.error.issues[0]?.message}`,
@@ -39,6 +54,7 @@ async function main() {
     categoriesResult.data,
     membersResult.data,
     projectsResult.data,
+    orgId,
   );
 
   console.log("既存データを削除しています...");

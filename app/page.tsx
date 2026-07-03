@@ -1,3 +1,6 @@
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+
 import { Workspace } from "@/components/workspace/Workspace";
 import workspaceData from "@/data/workspace.json";
 import { listCategories } from "@/db/repositories/categories";
@@ -11,6 +14,11 @@ import { workspaceSchema } from "@/lib/schema";
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
+  // 通常は `proxy.ts`（旧 `middleware.ts`）が未サインイン・組織未所属のリクエストを事前に弾くため
+  // ここに到達する時点で `orgId` は存在するはずだが、念のため防御的にも確認する。
+  const { orgId } = await auth();
+  if (!orgId) redirect("/onboarding");
+
   const wsResult = workspaceSchema.safeParse(workspaceData);
   if (!wsResult.success) {
     throw new Error(
@@ -18,12 +26,14 @@ export default async function Page() {
     );
   }
 
-  // Category/Member/Project(+Task) は Neon(DB) から直接取得する（Server Component）。
-  // ワークスペース名・アイコンはまだDB化していないため data/workspace.json のまま。
+  // Category/Project(+Task) は組織（orgId）でスコープしたうえで Neon(DB) から直接取得する
+  // （Server Component）。Member はまだ組織スコープ化していない共有データ（セクション3の
+  // 実装メモ参照）。ワークスペース名・アイコンはまだDB化していないため data/workspace.json
+  // のまま。
   const [categories, members, projects] = await Promise.all([
-    listCategories(),
+    listCategories(orgId),
     listMembers(),
-    listProjectsWithTasks(),
+    listProjectsWithTasks(orgId),
   ]);
 
   return (

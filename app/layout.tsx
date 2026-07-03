@@ -1,3 +1,5 @@
+import { ClerkProvider } from "@clerk/nextjs";
+import { jaJP } from "@clerk/localizations";
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
@@ -27,12 +29,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja" className={`${inter.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">
-        {/* shadcn/ui の Sidebar コンポーネント（SidebarMenuButton の collapsed
-            時 tooltip 等）が要求するためアプリ全体をラップする。 */}
-        <TooltipProvider delay={300}>{children}</TooltipProvider>
-      </body>
-    </html>
+    <ClerkProvider
+      localization={jaJP}
+      appearance={{
+        variables: {
+          colorPrimary: "oklch(0.3732 0.0635 258.276)",
+          colorBackground: "oklch(0.9972 0.0028 84.5587)",
+          colorForeground: "oklch(0.2354 0.0019 286.2536)",
+          borderRadius: "0.625rem",
+        },
+      }}
+    >
+      <html lang="ja" className={`${inter.variable} h-full antialiased`}>
+        <body className="flex min-h-full flex-col">
+          {/* shadcn/ui の Sidebar コンポーネント（SidebarMenuButton の collapsed
+              時 tooltip 等）が要求するためアプリ全体をラップする。 */}
+          <TooltipProvider delay={300}>{children}</TooltipProvider>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

@@ -25,10 +25,35 @@ vi.mock("@/db/repositories/members", () => ({
 vi.mock("@/db/repositories/projects", () => ({
   listProjectsWithTasks: vi.fn(async () => projects),
 }));
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(async () => ({ orgId: "org_test" })),
+}));
+// `Workspace` 配下の `GlobalHeader`/`OrgSwitcher`（Client Component）が使う Clerk の
+// フック群。`<ClerkProvider>` 無しでレンダリングするため、本テストでは最小限のスタブを返す
+// （組織・ユーザー情報自体の検証は `OrgSwitcher`/`GlobalHeader` 単体のテストで行う）。
+vi.mock("@clerk/nextjs", () => ({
+  useOrganization: () => ({
+    isLoaded: false,
+    organization: null,
+    membership: null,
+  }),
+  useOrganizationList: () => ({
+    isLoaded: false,
+    userMemberships: { data: [] },
+    setActive: undefined,
+  }),
+  useUser: () => ({ isLoaded: false, user: null }),
+  useClerk: () => ({
+    signOut: vi.fn(),
+    openUserProfile: vi.fn(),
+    openCreateOrganization: vi.fn(),
+  }),
+}));
 
 // `Page` は async Server Component のため、`render(<Page />)` ではなく
 // 先に `await Page()` で解決した要素を render に渡す。
 import Page from "@/app/page";
+import { auth } from "@clerk/nextjs/server";
 
 describe("Page", () => {
   it("DB（リポジトリ層）から初期データを取得し、Workspace をレンダリングできる", async () => {
@@ -43,5 +68,13 @@ describe("Page", () => {
 
     // プロジェクト一覧の見出し（Pane 2）
     expect(screen.getByText("プロジェクト一覧")).toBeInTheDocument();
+  });
+
+  it("組織未所属（orgId 無し）の場合は /onboarding へリダイレクトする（middleware をすり抜けた場合の防御）", async () => {
+    vi.mocked(auth).mockResolvedValueOnce({ orgId: null } as never);
+
+    await expect(Page()).rejects.toMatchObject({
+      digest: expect.stringContaining("/onboarding"),
+    });
   });
 });

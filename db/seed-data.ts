@@ -4,11 +4,20 @@
  *
  * DB 接続を必要としないため Vitest で直接検証できる（`db/seed.ts` 側は本関数の
  * 結果を使って実際の insert を行うだけにし、ロジックの二重管理を避ける）。
+ *
+ * セクション3で `orgId` を追加した。シードデータは単一組織向けのため、呼び出し側
+ * （`db/seed.ts`）が環境変数 `SEED_ORG_ID` から1つの組織IDを渡し、categories/projects/
+ * tasks の全行にスタンプする（`members` は組織スコープ化していないため対象外）。
  */
 
 import type { Category, Member, Project } from "@/lib/schema";
 
-import type { NewCategoryRow, NewMemberRow, NewProjectRow, NewTaskRow } from "./schema";
+import type {
+  NewCategoryRow,
+  NewMemberRow,
+  NewProjectRow,
+  NewTaskRow,
+} from "./schema";
 
 export type SeedRows = {
   categoryRows: NewCategoryRow[];
@@ -26,10 +35,12 @@ export function buildSeedRows(
   categories: Category[],
   members: Member[],
   projects: Project[],
+  orgId: string,
 ): SeedRows {
   const categoryRows: NewCategoryRow[] = categories.map((c) => ({
     id: c.id,
     name: c.name,
+    orgId,
   }));
 
   const memberRows: NewMemberRow[] = members.map((m) => ({
@@ -45,6 +56,7 @@ export function buildSeedRows(
     status: p.status,
     deadline: p.deadline,
     sortOrder: index,
+    orgId,
   }));
 
   const taskRows: NewTaskRow[] = projects.flatMap((p) =>
@@ -57,6 +69,7 @@ export function buildSeedRows(
       assigneeId: t.assigneeId,
       memo: t.memo,
       sortOrder: index,
+      orgId,
     })),
   );
 

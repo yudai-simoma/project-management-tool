@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { reorderProjects } from "@/db/repositories/projects";
+import { requireOrgId } from "@/lib/api/auth";
 import { readJsonBody, zodErrorResponse } from "@/lib/api/respond";
 import { reorderProjectsSchema } from "@/lib/api/schemas";
 
@@ -10,10 +11,13 @@ import { reorderProjectsSchema } from "@/lib/api/schemas";
  * （`docs/backend-implementation-plan.md` セクション2で確認した方針）。
  */
 export async function PATCH(request: Request) {
+  const ctx = await requireOrgId();
+  if (!ctx.ok) return ctx.response;
+
   const body = await readJsonBody(request);
   const parsed = reorderProjectsSchema.safeParse(body);
   if (!parsed.success) return zodErrorResponse(parsed.error);
 
-  await reorderProjects(parsed.data.items);
+  await reorderProjects(ctx.orgId, parsed.data.items);
   return new NextResponse(null, { status: 204 });
 }

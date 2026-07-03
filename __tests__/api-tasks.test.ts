@@ -5,6 +5,9 @@ vi.mock("@/db/repositories/tasks", () => ({
   updateTask: vi.fn(),
   deleteTask: vi.fn(),
 }));
+vi.mock("@/lib/api/auth", () => ({
+  requireOrgId: vi.fn(async () => ({ ok: true, orgId: "org_test" })),
+}));
 
 import * as tasksRepo from "@/db/repositories/tasks";
 import { POST } from "@/app/api/projects/[id]/tasks/route";
@@ -36,7 +39,7 @@ describe("POST /api/projects/[id]/tasks", () => {
     );
 
     expect(res.status).toBe(201);
-    expect(tasksRepo.createTask).toHaveBeenCalledWith("p-1", {
+    expect(tasksRepo.createTask).toHaveBeenCalledWith("org_test", "p-1", {
       id: "t-1",
       title: "要件定義",
       done: false,
@@ -59,10 +62,8 @@ describe("POST /api/projects/[id]/tasks", () => {
     expect(tasksRepo.createTask).not.toHaveBeenCalled();
   });
 
-  it("存在しないプロジェクトへの追加（外部キー制約違反）は404を返す", async () => {
-    vi.mocked(tasksRepo.createTask).mockRejectedValue(
-      new Error("foreign key violation"),
-    );
+  it("存在しないプロジェクト・他組織のプロジェクトへの追加は404を返す", async () => {
+    vi.mocked(tasksRepo.createTask).mockResolvedValue(null);
 
     const res = await POST(
       new Request("http://localhost/api/projects/none/tasks", {
@@ -92,7 +93,9 @@ describe("PATCH /api/tasks/[id]", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(tasksRepo.updateTask).toHaveBeenCalledWith("t-1", { done: true });
+    expect(tasksRepo.updateTask).toHaveBeenCalledWith("org_test", "t-1", {
+      done: true,
+    });
   });
 
   it("存在しないタスクは404を返す", async () => {

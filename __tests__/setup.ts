@@ -1,4 +1,15 @@
 import "@testing-library/jest-dom/vitest";
+import { cleanup } from "@testing-library/react";
+import { afterEach } from "vitest";
+
+// vitest.config.ts で `test.globals` を有効化していないため、`@testing-library/react` の
+// 自動クリーンアップ（`afterEach` グローバルに依存する）が効かない。複数のテストで
+// `render()` を呼ぶファイル（DropdownMenu 等をクリックで開閉するテスト）で前のテストの
+// DOM が残り、`getByRole`/`getByText` が複数要素にヒットしてしまうのを防ぐため、
+// 明示的に各テスト後にアンマウントする。
+afterEach(() => {
+  cleanup();
+});
 
 // jsdom は `window.matchMedia` を実装していない。`hooks/use-mobile.ts`
 // （shadcn Sidebar が使用）が呼び出すため、テスト環境向けに最小限のスタブを用意する。

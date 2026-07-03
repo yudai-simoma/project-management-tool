@@ -49,19 +49,22 @@ const projects: Project[] = [
   },
 ];
 
+const orgId = "org_test";
+
 describe("buildSeedRows", () => {
-  it("categories/members をそのまま insert 行に変換する", () => {
+  it("categories に orgId を付与して insert 行に変換し、members は orgId を持たずそのまま変換する", () => {
     const { categoryRows, memberRows } = buildSeedRows(
       categories,
       members,
       projects,
+      orgId,
     );
-    expect(categoryRows).toEqual(categories);
+    expect(categoryRows).toEqual(categories.map((c) => ({ ...c, orgId })));
     expect(memberRows).toEqual(members);
   });
 
-  it("projects の配列順を sortOrder として採番し、tasks を持たない", () => {
-    const { projectRows } = buildSeedRows(categories, members, projects);
+  it("projects の配列順を sortOrder として採番し、orgId を付与し、tasks を持たない", () => {
+    const { projectRows } = buildSeedRows(categories, members, projects, orgId);
     expect(projectRows).toEqual([
       {
         id: "pr1",
@@ -70,6 +73,7 @@ describe("buildSeedRows", () => {
         status: "inProgress",
         deadline: "2026-07-05",
         sortOrder: 0,
+        orgId,
       },
       {
         id: "pr2",
@@ -78,13 +82,14 @@ describe("buildSeedRows", () => {
         status: "planning",
         deadline: "",
         sortOrder: 1,
+        orgId,
       },
     ]);
     expect(projectRows.every((p) => !("tasks" in p))).toBe(true);
   });
 
-  it("tasks をフラット化し、projectId とプロジェクト内の sortOrder を付与する（未アサイン=空文字を維持）", () => {
-    const { taskRows } = buildSeedRows(categories, members, projects);
+  it("tasks をフラット化し、projectId・orgId とプロジェクト内の sortOrder を付与する（未アサイン=空文字を維持）", () => {
+    const { taskRows } = buildSeedRows(categories, members, projects, orgId);
     expect(taskRows).toEqual([
       {
         id: "t1-1",
@@ -95,6 +100,7 @@ describe("buildSeedRows", () => {
         assigneeId: "m1",
         memo: "",
         sortOrder: 0,
+        orgId,
       },
       {
         id: "t1-2",
@@ -105,12 +111,13 @@ describe("buildSeedRows", () => {
         assigneeId: "",
         memo: "",
         sortOrder: 1,
+        orgId,
       },
     ]);
   });
 
   it("タスク0件のプロジェクトからは何も生成しない", () => {
-    const { taskRows } = buildSeedRows(categories, members, projects);
+    const { taskRows } = buildSeedRows(categories, members, projects, orgId);
     expect(taskRows.filter((t) => t.projectId === "pr2")).toEqual([]);
   });
 });

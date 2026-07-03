@@ -13,6 +13,9 @@ vi.mock("@/db/repositories/categories", () => ({
   updateCategoryName: vi.fn(),
   deleteCategoryCascade: vi.fn(),
 }));
+vi.mock("@/lib/api/auth", () => ({
+  requireOrgId: vi.fn(async () => ({ ok: true, orgId: "org_test" })),
+}));
 
 import * as categoriesRepo from "@/db/repositories/categories";
 import { GET, POST } from "@/app/api/categories/route";
@@ -53,7 +56,7 @@ describe("POST /api/categories", () => {
     );
 
     expect(res.status).toBe(201);
-    expect(categoriesRepo.createCategory).toHaveBeenCalledWith({
+    expect(categoriesRepo.createCategory).toHaveBeenCalledWith("org_test", {
       id: "cat-1",
       name: "プロダクト開発",
     });
@@ -101,6 +104,7 @@ describe("PATCH /api/categories/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(categoriesRepo.updateCategoryName).toHaveBeenCalledWith(
+      "org_test",
       "cat-1",
       "新名称",
     );
@@ -133,7 +137,10 @@ describe("DELETE /api/categories/[id]", () => {
     );
 
     expect(res.status).toBe(204);
-    expect(categoriesRepo.deleteCategoryCascade).toHaveBeenCalledWith("cat-1");
+    expect(categoriesRepo.deleteCategoryCascade).toHaveBeenCalledWith(
+      "org_test",
+      "cat-1",
+    );
   });
 
   it("存在しないカテゴリは404を返す", async () => {

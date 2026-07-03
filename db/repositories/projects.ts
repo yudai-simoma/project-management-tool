@@ -3,9 +3,12 @@
  *
  * `Project` ドメイン型は `tasks` を nest した形（`lib/schema.ts`）のため、一覧・詳細取得では
  * 対応する `tasks` 行も合わせて取得して組み立てる。
+ *
+ * セクション3で全関数に `orgId` を追加し、組織単位でデータをスコープしている
+ * （`sortOrder` の採番も組織内で完結させる。他組織のプロジェクト件数の影響を受けない）。
  */
 
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import {
@@ -29,11 +32,12 @@ function toProject(row: ProjectRowDb, taskRows: TaskRowDb[]): Project {
   };
 }
 
-/** 全プロジェクトを、配下タスク込みで取得する。並び順は `sortOrder` 昇順。 */
-export async function listProjectsWithTasks(): Promise<Project[]> {
+/** 組織内の全プロジェクトを、配下タスク込みで取得する。並び順は `sortOrder` 昇順。 */
+export async function listProjectsWithTasks(orgId: string): Promise<Project[]> {
   const projectRows = await db
     .select()
     .from(projects)
+    .where(eq(projects.orgId, orgId))
     .orderBy(asc(projects.sortOrder));
   if (projectRows.length === 0) return [];
 
@@ -58,28 +62,33 @@ export async function listProjectsWithTasks(): Promise<Project[]> {
   return projectRows.map((p) => toProject(p, tasksByProject.get(p.id) ?? []));
 }
 
-/** 新規プロジェクトを末尾（`sortOrder` 最大 + 1）に追加する。タスクは空配列。 */
-export async function createProject(input: {
-  id: string;
-  name: string;
-  categoryId: string;
-  status: ProjectStatusKey;
-  deadline: string;
-}): Promise<Project> {
+/** 新規プロジェクトを組織内の末尾（`sortOrder` 最大 + 1）に追加する。タスクは空配列。 */
+export async function createProject(
+  orgId: string,
+  input: {
+    id: string;
+    name: string;
+    categoryId: string;
+    status: ProjectStatusKey;
+    deadline: string;
+  },
+): Promise<Project> {
   const [{ maxSort }] = await db
     .select({
       maxSort: sql<number>`coalesce(max(${projects.sortOrder}), -1)`,
     })
-    .from(projects);
+    .from(projects)
+    .where(eq(projects.orgId, orgId));
 
   const [row] = await db
     .insert(projects)
-    .values({ ...input, sortOrder: maxSort + 1 })
+    .values({ ...input, orgId, sortOrder: maxSort + 1 })
     .returning();
   return toProject(row, []);
 }
 
 export async function updateProject(
+  orgId: string,
   id: string,
   patch: Partial<{
     name: string;
@@ -91,7 +100,7 @@ export async function updateProject(
   const [row] = await db
     .update(projects)
     .set(patch)
-    .where(eq(projects.id, id))
+    .where(and(eq(projects.id, id), eq(projects.orgId, orgId)))
     .returning();
   if (!row) return null;
 
@@ -104,10 +113,13 @@ export async function updateProject(
 }
 
 /** プロジェクトを削除する。配下タスクは `onDelete: "cascade"` により自動的に削除される。 */
-export async function deleteProject(id: string): Promise<boolean> {
+export async function deleteProject(
+  orgId: string,
+  id: string,
+): Promise<boolean> {
   const deleted = await db
     .delete(projects)
-    .where(eq(projects.id, id))
+    .where(and(eq(projects.id, id), eq(projects.orgId, orgId)))
     .returning({ id: projects.id });
   return deleted.length > 0;
 }
@@ -118,15 +130,17 @@ export async function deleteProject(id: string): Promise<boolean> {
  * 再採番して送る」という §2 で確認した方針）。
  *
  * `drizzle-orm/neon-http` は複数ステートメントにまたがるトランザクションを
- * サポートしないため（`db/seed.ts` と同様）、1件ずつ逐次更新する。
+ * サポートしないため（`db/seed.ts` と同様）、1件ずつ逐次更新する。`orgId` の
+ * 一致も条件に含め、他組織のプロジェクトIDが紛れ込んでいても更新されないようにする。
  */
 export async function reorderProjects(
+  orgId: string,
   items: { id: string; status: ProjectStatusKey; sortOrder: number }[],
 ): Promise<void> {
   for (const item of items) {
     await db
       .update(projects)
       .set({ status: item.status, sortOrder: item.sortOrder })
-      .where(eq(projects.id, item.id));
+      .where(and(eq(projects.id, item.id), eq(projects.orgId, orgId)));
   }
 }

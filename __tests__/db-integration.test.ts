@@ -10,15 +10,18 @@ import { describe, expect, it } from "vitest";
  */
 const hasDatabaseUrl = Boolean(process.env.DATABASE_URL);
 
-describe.skipIf(!hasDatabaseUrl)("Neon 接続（実DBが必要。未設定時は自動スキップ）", () => {
-  it("DB に接続でき、categories/members/projects/tasks テーブルが存在する", async () => {
-    const { db } = await import("@/db/client");
-    const result = await db.execute(
-      sql`select table_name from information_schema.tables where table_schema = 'public'`,
-    );
-    const tableNames = result.rows.map((row) => row.table_name);
-    expect(tableNames).toEqual(
-      expect.arrayContaining(["categories", "members", "projects", "tasks"]),
-    );
-  });
-});
+describe.skipIf(!hasDatabaseUrl)(
+  "Neon 接続（実DBが必要。未設定時は自動スキップ）",
+  () => {
+    it("DB に接続でき、categories/members/projects/tasks テーブルが存在する", async () => {
+      const { db } = await import("@/db/client");
+      const result = await db.execute(
+        sql`select table_name from information_schema.tables where table_schema = 'public'`,
+      );
+      const tableNames = result.rows.map((row) => row.table_name);
+      expect(tableNames).toEqual(
+        expect.arrayContaining(["categories", "members", "projects", "tasks"]),
+      );
+    });
+  },
+);

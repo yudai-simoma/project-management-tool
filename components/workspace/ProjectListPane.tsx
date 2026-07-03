@@ -116,8 +116,7 @@ export function ProjectListPane({
         FALLBACK_PROJECT_NAME;
       if (!over) return `${name}を移動中です。`;
       const overContainer = over.data.current?.containerId as
-        | ProjectStatusKey
-        | undefined;
+        ProjectStatusKey | undefined;
       if (overContainer)
         return `${name}を「${STATUS_LABELS[overContainer]}」の上に移動しました。`;
       return `${name}を移動中です。`;
@@ -153,8 +152,7 @@ export function ProjectListPane({
     if (!over) return;
 
     const activeContainer = active.data.current?.containerId as
-      | ProjectStatusKey
-      | undefined;
+      ProjectStatusKey | undefined;
     const overContainer =
       (over.data.current?.containerId as ProjectStatusKey | undefined) ??
       (typeof over.id === "string" && groups.some((g) => g.status === over.id)
@@ -355,7 +353,7 @@ function StatusGroup({
                 actions={
                   <DropdownMenuItem
                     variant="destructive"
-                    onSelect={() => onDeleteRequest(project.id, project.name)}
+                    onClick={() => onDeleteRequest(project.id, project.name)}
                   >
                     <Trash2 />
                     削除

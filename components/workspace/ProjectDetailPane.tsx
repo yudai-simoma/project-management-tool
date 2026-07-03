@@ -288,7 +288,12 @@ function AiAssistantPanel({
   onToggleTaskDone: (taskId: string) => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    { id: "greeting", role: "assistant", kind: "text", content: AI_CHAT_GREETING },
+    {
+      id: "greeting",
+      role: "assistant",
+      kind: "text",
+      content: AI_CHAT_GREETING,
+    },
   ]);
   const [input, setInput] = useState("");
 

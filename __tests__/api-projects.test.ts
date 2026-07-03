@@ -7,6 +7,9 @@ vi.mock("@/db/repositories/projects", () => ({
   deleteProject: vi.fn(),
   reorderProjects: vi.fn(),
 }));
+vi.mock("@/lib/api/auth", () => ({
+  requireOrgId: vi.fn(async () => ({ ok: true, orgId: "org_test" })),
+}));
 
 import * as projectsRepo from "@/db/repositories/projects";
 import { GET, POST } from "@/app/api/projects/route";
@@ -56,7 +59,7 @@ describe("POST /api/projects", () => {
 
     expect(res.status).toBe(201);
     // status/deadline は zod の .default() により補完される
-    expect(projectsRepo.createProject).toHaveBeenCalledWith({
+    expect(projectsRepo.createProject).toHaveBeenCalledWith("org_test", {
       id: "p-1",
       name: "モバイルアプリ新機能開発",
       categoryId: "cat-1",
@@ -94,7 +97,7 @@ describe("PATCH /api/projects/[id]", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(projectsRepo.updateProject).toHaveBeenCalledWith("p-1", {
+    expect(projectsRepo.updateProject).toHaveBeenCalledWith("org_test", "p-1", {
       status: "done",
     });
   });
@@ -167,7 +170,10 @@ describe("PATCH /api/projects/reorder", () => {
     );
 
     expect(res.status).toBe(204);
-    expect(projectsRepo.reorderProjects).toHaveBeenCalledWith(items);
+    expect(projectsRepo.reorderProjects).toHaveBeenCalledWith(
+      "org_test",
+      items,
+    );
   });
 
   it("items が空配列だと400を返す", async () => {

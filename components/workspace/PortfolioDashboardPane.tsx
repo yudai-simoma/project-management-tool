@@ -36,7 +36,7 @@ export function PortfolioDashboardPane({ projects }: { projects: Project[] }) {
                   <CardTitle>{STATUS_LABELS[status]}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-semibold tabular-nums text-foreground">
+                  <p className="text-3xl font-semibold text-foreground tabular-nums">
                     {counts[status]}
                   </p>
                 </CardContent>

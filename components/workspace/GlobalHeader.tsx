@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { KeyRound, LogOut, Settings, User } from "lucide-react";
+import { useClerk, useUser } from "@clerk/nextjs";
 
 import { type Category, type MainView } from "@/lib/schema";
 import { MAIN_VIEW_LABEL } from "@/lib/labels";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -19,6 +20,7 @@ import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -48,10 +50,19 @@ type GlobalHeaderProps = {
  * ユーザーメニュー（Avatar + DropdownMenu）。
  *
  * 「Gemini APIキー設定」から `ApiKeySettingsDialog` を開く（§2.5, §6.3 決定）。
- * 「プロフィール」「ログアウト」はダミーの no-op 項目（バックエンドフェーズで実装）。
+ * 「プロフィール」は Clerk の `openUserProfile()`（Clerkが提供するプロフィール編集
+ * モーダル）を開く。「ログアウト」は Clerk の `signOut()` を呼び、`/sign-in` へ遷移する
+ * （セクション3で実データ接続、ダミーのno-opから置き換え）。
  */
 function UserMenu() {
   const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
+  const { user, isLoaded } = useUser();
+  const clerk = useClerk();
+
+  const initial =
+    user?.fullName?.trim().charAt(0) ||
+    user?.primaryEmailAddress?.emailAddress.charAt(0) ||
+    "?";
 
   return (
     <>
@@ -64,23 +75,37 @@ function UserMenu() {
               className="flex shrink-0 items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <Avatar size="sm">
-                <AvatarFallback>ユ</AvatarFallback>
+                {isLoaded && user?.imageUrl && (
+                  <AvatarImage src={user.imageUrl} alt={user.fullName ?? ""} />
+                )}
+                <AvatarFallback>{initial}</AvatarFallback>
               </Avatar>
             </button>
           }
         />
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuLabel>アカウント</DropdownMenuLabel>
-          <DropdownMenuItem onSelect={() => setApiKeyDialogOpen(true)}>
+          {/* `DropdownMenuLabel`（base-ui の `Menu.GroupLabel`）は `Menu.Group` 内での
+              使用が必須のため、他の項目とは分けて単独の `DropdownMenuGroup` で包む。 */}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="truncate">
+              {isLoaded
+                ? (user?.fullName ?? user?.primaryEmailAddress?.emailAddress)
+                : "アカウント"}
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+          <DropdownMenuItem onClick={() => setApiKeyDialogOpen(true)}>
             <KeyRound />
             Gemini APIキー設定
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => {}}>
+          <DropdownMenuItem onClick={() => clerk.openUserProfile({})}>
             <User />
             プロフィール
           </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" onSelect={() => {}}>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => clerk.signOut({ redirectUrl: "/sign-in" })}
+          >
             <LogOut />
             ログアウト
           </DropdownMenuItem>

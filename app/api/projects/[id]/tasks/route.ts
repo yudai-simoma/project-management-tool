@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createTask } from "@/db/repositories/tasks";
+import { requireOrgId } from "@/lib/api/auth";
 import {
   notFoundResponse,
   readJsonBody,
@@ -11,16 +12,15 @@ import { createTaskSchema } from "@/lib/api/schemas";
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, { params }: RouteParams) {
+  const ctx = await requireOrgId();
+  if (!ctx.ok) return ctx.response;
+
   const { id: projectId } = await params;
   const body = await readJsonBody(request);
   const parsed = createTaskSchema.safeParse(body);
   if (!parsed.success) return zodErrorResponse(parsed.error);
 
-  try {
-    const task = await createTask(projectId, parsed.data);
-    return NextResponse.json(task, { status: 201 });
-  } catch {
-    // `tasks.project_id` の外部キー制約違反（存在しないプロジェクトへの追加）。
-    return notFoundResponse("プロジェクトが見つかりません");
-  }
+  const task = await createTask(ctx.orgId, projectId, parsed.data);
+  if (!task) return notFoundResponse("プロジェクトが見つかりません");
+  return NextResponse.json(task, { status: 201 });
 }

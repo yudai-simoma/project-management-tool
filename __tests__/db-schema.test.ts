@@ -54,6 +54,13 @@ describe("db/schema", () => {
     expect(Object.keys(columns)).not.toContain("deadlineRisk");
   });
 
+  it("categories/projects/tasks が組織スコープ用の orgId 列を持つ（members は持たない）", () => {
+    expect(getTableColumns(categories).orgId.notNull).toBe(true);
+    expect(getTableColumns(projects).orgId.notNull).toBe(true);
+    expect(getTableColumns(tasks).orgId.notNull).toBe(true);
+    expect(Object.keys(getTableColumns(members))).not.toContain("orgId");
+  });
+
   it("tasks テーブルが zod の Task スキーマに対応するカラムを持つ", () => {
     const columns = getTableColumns(tasks);
     expect(Object.keys(columns)).toEqual(
