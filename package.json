@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx db/seed.ts"
+    "db:seed": "tsx db/seed.ts",
+    "approve-existing-users": "tsx scripts/approve-existing-users.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.8",

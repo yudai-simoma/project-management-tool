@@ -111,3 +111,9 @@ export const aiChatRequestSchema = z.object({
   ),
   message: z.string().min(1),
 });
+
+// ===== 会員承認制（プラットフォーム管理者専用ページ） =====
+
+export const updateApprovalStatusSchema = z.object({
+  status: z.enum(["approved", "rejected"]),
+});

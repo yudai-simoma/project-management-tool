@@ -47,7 +47,7 @@
 
 | #   | ステップ                                             | 依存        | ステータス |
 | --- | ----------------------------------------------------- | ----------- | ---------- |
-| 1   | 会員承認制 + サービス管理者専用ページ                 | なし        | ⬜ 未着手  |
+| 1   | 会員承認制 + サービス管理者専用ページ                 | なし        | ✅ 完了    |
 | 2   | カテゴリ名・プロジェクト名のインライン編集            | なし        | ⬜ 未着手  |
 | 3   | AIチャットUX改善（送信・履歴・トークン表示・提案制）  | なし        | ⬜ 未着手  |
 | 4-A | 【設計確定】4ペイン再構成のヒアリング・仕様合意       | ステップ2推奨 | ⬜ 未着手  |
@@ -152,9 +152,61 @@ docs/feedback-implementation-plan.md のステップ1「会員承認制 + サー
 docs/feedback-implementation-plan.md のステップ1のステータスを更新し、実装メモを追記してください。
 ```
 
-### 実装メモ
+### 実装メモ（2026-07-04 完了）
 
-（未着手。着手・完了後にここへ追記する）
+**事前確認事項への回答（ユーザー）**:
+
+- プラットフォーム管理者のメールアドレスは `cdcdasdll@gmail.com` のみ（`info@afu.co.jp` は含めない）
+- 却下（rejected）されたユーザーは専用の「利用できません」画面（`/rejected`）を表示する（サインイン自体はブロックしない）
+- 承認待ちの間は Organization の新規作成・参加自体を止める（`/onboarding` にも到達させない）
+- 既存の稼働中ユーザーは一括で「承認済み」に切り替える（`scripts/approve-existing-users.ts` で一度だけ実行）
+
+**新規ファイル**:
+
+| ファイル                                                   | 内容                                                                                                                                                                                     |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lib/auth/approval.ts`                                        | 承認状態 `ApprovalStatus`（`pending`/`approved`/`rejected`）と、Clerkユーザーの `publicMetadata` から状態を導出する `getApprovalStatus`。**未設定 = pending** とみなす（Webhookでの明示セット方式は採用しなかった。理由は後述） |
+| `lib/auth/platform-admin.ts`                                  | `PLATFORM_ADMIN_EMAILS`（カンマ区切り、大文字小文字・前後空白を無視）とメールアドレスを突き合わせる `isPlatformAdminEmail`（純粋関数）と、RSC/Route Handler から呼ぶ `isCurrentUserPlatformAdmin`（`currentUser()` 利用） |
+| `lib/clerk/platform-users.ts`                                 | `/admin` 向け。Clerkの全ユーザー一覧を承認状態付きで返す `listPlatformUsers`、承認状態を更新する `setUserApprovalStatus`（Clerk Backend SDK の `users.getUserList`/`updateUserMetadata`） |
+| `app/api/admin/users/route.ts`（GET）・`[id]/approval/route.ts`（PATCH） | プラットフォーム管理者専用。全ユーザー一覧の取得・承認状態の更新（`{status: "approved" \| "rejected"}`）。管理者でなければ403                                                          |
+| `lib/api/admin-client.ts`                                     | `/admin` ページ（クライアントコンポーネント）から上記APIを呼ぶ fetch ラッパー（`fetchPlatformUsers`/`updateApprovalStatusApi`。`lib/api/http.ts` の `apiFetch` を共用）                 |
+| `app/admin/layout.tsx`                                        | `/admin` 配下のアクセス制御。`isCurrentUserPlatformAdmin()` が `false` なら `/` へ `redirect`                                                                                          |
+| `app/admin/page.tsx`・`components/admin/AdminApprovalDashboard.tsx` | プラットフォーム管理者専用ページ本体。承認待ち・承認済み・却下済み（利用停止済みを含む）の3セクションを表示し、承認・却下・利用停止・承認への差し戻しを行う                              |
+| `app/pending-approval/page.tsx`                                | 承認待ち中の案内画面（ワークスペースの中身は見せない、サインアウト導線のみ）                                                                                                            |
+| `app/rejected/page.tsx`                                        | 却下・利用停止済みユーザー向けの案内画面（同上）                                                                                                                                        |
+| `components/auth/SignOutActionButton.tsx`                     | 上記2画面で使う共通のサインアウトボタン（`GlobalHeader.tsx` の `UserMenu` と同じ `useClerk().signOut()` パターン）                                                                       |
+| `scripts/approve-existing-users.ts`（`npm run approve-existing-users`） | 本ステップ適用時に一度だけ実行する一括承認スクリプト。`approvalStatus` 未設定の既存ユーザーを `approved` に更新する（冪等、既に設定済みのユーザーはスキップ）                            |
+| `__tests__/approval.test.ts`・`platform-admin.test.ts`・`api-admin-users.test.ts`・`admin-approval-dashboard.test.tsx`・`admin-layout.test.tsx` | 新規ロジックのユニットテスト                                                                                                                                                            |
+
+**変更したファイル**:
+
+- `lib/auth/route-guard.ts`: `decideRouteGuard` に `isAdminRoute`/`isPendingApprovalRoute`/`isRejectedRoute`/`isPlatformAdmin`/`approvalStatus` パラメータを追加（すべて既定値付きの optional にし、既存の8ケースのテスト・呼び出し元との後方互換を保った）。判定順序は「`/admin` は素通し → プラットフォーム管理者または承認済みでなければ却下/未承認ルートへリダイレクト → 承認済み/管理者は従来の組織所属チェックへ」
+- `proxy.ts`: `isAdminRoute`/`isPendingApprovalRoute`/`isRejectedRoute` の `createRouteMatcher` を追加。サインイン済みリクエストに限り `clerkClient().users.getUser(userId)` でユーザー情報を取得し、承認状態・プラットフォーム管理者判定を `decideRouteGuard` に渡す
+- `lib/api/schemas.ts`: `updateApprovalStatusSchema`（`{status: "approved" | "rejected"}`）を追加
+- `.env.example`・`.env.local`: `PLATFORM_ADMIN_EMAILS` を追加（`.env.local` には `cdcdasdll@gmail.com` を設定済み）
+- `package.json`: `approve-existing-users` スクリプトを追加
+
+**設計判断メモ（ユーザー確認なしで決定した箇所）**:
+
+- **「未設定 = pending」ロジックを採用し、Webhookは使わなかった**。理由: サインアップWebhook（`user.created`）を新設すると配線（Clerk Dashboard側のWebhook登録、署名検証、エンドポイント追加）が増える一方、`getApprovalStatus` が「未設定なら pending」を返すだけで新規ユーザーは自動的にpending相当になる。既存ユーザーとの違いは「明示的に `approved` が設定されているか」だけなので、一括承認スクリプト（後述）と組み合わせれば要件を満たせる
+- **承認状態・プラットフォーム管理者の判定を `proxy.ts` 内で `clerkClient().users.getUser(userId)` により行った**（Clerk Dashboardでのセッショントークンのカスタムクレーム設定は使わなかった）。Clerkの既定のセッションクレームには `publicMetadata`・メールアドレスが含まれないため、これらを使うには「Customize session token」でカスタムクレームを追加するダッシュボード設定が必要になる（セクション3で `org:owner` カスタムロールを追加したのと同種の追加設定）。しかし本ステップは「締め出し防止のフェイルセーフを必ず入れること」という明示要件があり、ダッシュボード側の設定漏れ・ミスが発生した場合にプラットフォーム管理者自身が締め出されるリスクを避けたかったため、追加のダッシュボード設定を必要としない Backend API 直接呼び出し（`lib/clerk/org-members.ts` と同じ `clerkClient()` パターン）を選んだ。**トレードオフとして、認証済みリクエスト全て（画面遷移・APIコール双方）で `proxy.ts` 実行のたびに Clerk Backend API への追加の1リクエストが発生する**（社内ツール規模のトラフィックでは許容範囲と判断したが、将来的にレイテンシ・Clerk API使用量が問題になった場合は、セッショントークンのカスタムクレーム化への切り替えを検討すること）
+- **`/api/**` にも承認ゲートを適用した**（ページ遷移だけでなくAPIも保護対象にした）。「承認待ちの間は組織参加自体を止める」という決定により、新規pendingユーザーは`orgId`を持てず既存の `requireOrgId()` だけでAPIアクセスは実質防げるが、**「利用停止」機能**（既に承認済み＝組織所属済みのユーザーを後から `rejected` にする）が正しく機能するためには、`orgId` を既に持っているユーザーのAPIアクセスもブロックできる必要がある。そのため `/api/**` にも承認ゲートを適用する設計にした
+- **却下済み一覧を追加した**（コピペ用プロンプトの「承認待ちユーザー一覧・承認/却下ボタン・承認済みユーザー一覧」には明記されていないが、指示書本文の「スコープ内」には「承認済みユーザー一覧（利用停止操作を含む）」とある）。却下・利用停止したユーザーがどの一覧にも表示されなくなり取り消し手段がなくなる状態を避けるため、「却下・利用停止済み」セクションと「承認に戻す」ボタンを追加した
+- **「利用停止」は却下（rejected）と同じ状態を再利用した**。4段階目のステータス（例: `suspended`）を新設せず、`approved → rejected` の遷移として表現している。承認済みユーザーへの利用停止も、pendingユーザーへの却下も、ユーザー体験としては同じ「このアカウントは利用できません」画面（`/rejected`）に帰着するため
+- **`/admin` はプラットフォーム管理者であれば組織未所属・未承認の状態でも到達できるようにした**（`decideRouteGuard` で `isAdminRoute` を承認ゲートより先に判定し、無条件で `next` を返す）。理由: プラットフォーム管理者はサービス全体の運営者であり、特定の組織に所属している必要はない。実際のアクセス制御（管理者以外を弾く）は `app/admin/layout.tsx` に一本化した（多層防御）
+- **GlobalHeader等への `/admin` への導線（メニュー項目）は追加していない**。プラットフォーム管理者はURLで直接 `/admin` にアクセスする運用とした。既存の `Workspace.tsx`（SSoT）にプラットフォーム管理者フラグを配線するのはスコープ外の変更になりうると判断し、指示書の「やること」に明記されていないUIナビゲーションの追加は見送った
+
+**確認・検証状況**:
+
+- `npm run test`（202件）・`npm run lint`・`npm run build` はいずれもグリーン（Node 20.10.0だと `vitest.config.ts` の読み込みに失敗するため Node 23.7.0 に切り替えて実行。既知の問題）
+- `npm run build` のルート一覧で `/admin`・`/pending-approval`・`/rejected`・`/api/admin/users`・`/api/admin/users/[id]/approval` が生成されることを確認済み
+- 実Clerk環境での動作確認（実際にpending状態のユーザーで `/pending-approval` にリダイレクトされるか、`/admin` からの承認操作で実際にワークスペースを使えるようになるか、`scripts/approve-existing-users.ts` の実行結果等）は、これまでのセクション同様サンドボックス化されたプレビューブラウザでは確認できなかった（Clerkのホスト型サインインページへの外部ドメイン遷移が失敗するため）。**ユーザー自身の手元環境で `npm run dev` から動作確認すること**。あわせて、本ステップ適用後は `npm run approve-existing-users` を一度だけ実行し、既存ユーザーを一括承認すること
+
+**次ステップへの引き継ぎ**:
+
+- ステップ2以降は本ステップの変更と独立して進められる
+- 将来 `proxy.ts` の Clerk Backend API 呼び出し（`clerkClient().users.getUser`）のレイテンシ・API使用量が問題になった場合は、Clerk Dashboardの「Customize session token」でセッションクレームに `metadata`/`email` を追加し、`auth()` の `sessionClaims` から直接読み取る方式への切り替えを検討する（設計判断メモ参照）
+- メンバー招待メールにClerkの `sign-up` リンクが含まれる場合、招待されたユーザーも通常のサインアップ扱いとなり `approvalStatus` は pending から始まる。招待されたメンバーを自動承認したい等の要望が出た場合は別途スコープを切って検討すること
 
 ---
 
