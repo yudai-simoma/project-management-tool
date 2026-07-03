@@ -7,9 +7,12 @@
  * トランザクションが必要になった場合は `drizzle-orm/neon-serverless`（WebSocket）への
  * 切替を検討する。
  *
- * このモジュールは import された時点で `DATABASE_URL` を要求する。API Route Handler・
- * シードスクリプトなど、実際に DB へアクセスするコードからのみ import すること
- * （型定義だけが必要な場合は `@/db/schema` を直接 import する）。
+ * `db` は実際にクエリを発行した瞬間まで接続生成（＝ `DATABASE_URL` の検証）を遅延する
+ * Proxy になっている（§2 で追加）。`next build` の「ページデータ収集」フェーズは
+ * Route Handler・Server Component のモジュールをトップレベルまで評価するため、
+ * ここで即座に接続を作ってしまうと `DATABASE_URL` 未設定の環境（Neonプロジェクト
+ * 未作成のユーザー環境や、DBを使わないセクションのCI）でビルド自体が失敗してしまう。
+ * 実行時に実際に DB へアクセスするコードパスに到達したときだけ検証エラーを出す。
  *
  * `tsx` 経由で実行するスクリプト（`db/seed.ts` 等）は Next.js の env 読み込みを
  * 経由しないため、ここで明示的に `.env.local` を読み込む。Next.js ランタイム
@@ -19,13 +22,17 @@
 
 import { neon } from "@neondatabase/serverless";
 import { config as loadEnv } from "dotenv";
-import { drizzle } from "drizzle-orm/neon-http";
+import { drizzle, type NeonHttpDatabase } from "drizzle-orm/neon-http";
 
 import * as schema from "./schema";
 
 loadEnv({ path: ".env.local", quiet: true });
 
-function createDb() {
+type Db = NeonHttpDatabase<typeof schema>;
+
+let cachedDb: Db | null = null;
+
+function createDb(): Db {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error(
@@ -37,4 +44,17 @@ function createDb() {
   return drizzle(sql, { schema });
 }
 
-export const db = createDb();
+function getDb(): Db {
+  if (!cachedDb) cachedDb = createDb();
+  return cachedDb;
+}
+
+export const db: Db = new Proxy({} as Db, {
+  get(_target, prop) {
+    const real = getDb();
+    const value = Reflect.get(real as object, prop);
+    // クラスメソッドは real インスタンスに bind し直す（プライベートフィールドを
+    // 使うメソッドを Proxy 経由の `this` で呼ぶと壊れるため）。
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+}) as Db;

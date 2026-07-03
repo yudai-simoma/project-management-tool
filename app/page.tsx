@@ -1,45 +1,36 @@
 import { Workspace } from "@/components/workspace/Workspace";
-import categoriesData from "@/data/categories.json";
-import membersData from "@/data/members.json";
-import projectsData from "@/data/projects.json";
 import workspaceData from "@/data/workspace.json";
-import {
-  categoriesSchema,
-  membersSchema,
-  projectsSchema,
-  workspaceSchema,
-} from "@/lib/schema";
+import { listCategories } from "@/db/repositories/categories";
+import { listMembers } from "@/db/repositories/members";
+import { listProjectsWithTasks } from "@/db/repositories/projects";
+import { workspaceSchema } from "@/lib/schema";
 
-export default function Page() {
-  const categoriesResult = categoriesSchema.safeParse(categoriesData);
-  const membersResult = membersSchema.safeParse(membersData);
-  const projectsResult = projectsSchema.safeParse(projectsData);
+// DB（Neon）から都度データを取得するため、ビルド時の静的プリレンダリング対象にしない。
+// これにより `DATABASE_URL` 未設定の環境（Neonプロジェクト未作成時）でも
+// `next build` 自体は通り、実際にアクセスされた時点でのみ DB 接続を必要とする。
+export const dynamic = "force-dynamic";
+
+export default async function Page() {
   const wsResult = workspaceSchema.safeParse(workspaceData);
-
-  if (
-    !categoriesResult.success ||
-    !membersResult.success ||
-    !projectsResult.success ||
-    !wsResult.success
-  ) {
-    const errors = [
-      !categoriesResult.success &&
-        `categories.json: ${categoriesResult.error.issues[0]?.message}`,
-      !membersResult.success &&
-        `members.json: ${membersResult.error.issues[0]?.message}`,
-      !projectsResult.success &&
-        `projects.json: ${projectsResult.error.issues[0]?.message}`,
-      !wsResult.success &&
-        `workspace.json: ${wsResult.error.issues[0]?.message}`,
-    ].filter(Boolean);
-    throw new Error(`データの形式が正しくありません:\n${errors.join("\n")}`);
+  if (!wsResult.success) {
+    throw new Error(
+      `データの形式が正しくありません:\nworkspace.json: ${wsResult.error.issues[0]?.message}`,
+    );
   }
+
+  // Category/Member/Project(+Task) は Neon(DB) から直接取得する（Server Component）。
+  // ワークスペース名・アイコンはまだDB化していないため data/workspace.json のまま。
+  const [categories, members, projects] = await Promise.all([
+    listCategories(),
+    listMembers(),
+    listProjectsWithTasks(),
+  ]);
 
   return (
     <Workspace
-      initialCategories={categoriesResult.data}
-      initialMembers={membersResult.data}
-      initialProjects={projectsResult.data}
+      initialCategories={categories}
+      initialMembers={members}
+      initialProjects={projects}
       workspace={wsResult.data}
     />
   );

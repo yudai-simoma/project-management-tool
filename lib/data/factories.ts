@@ -7,7 +7,7 @@ import { type Task, type Project, type ProjectStatusKey } from "@/lib/schema";
  */
 export function createMinimalTask(title: string): Task {
   return {
-    id: `t-${Date.now()}`,
+    id: `t-${crypto.randomUUID()}`,
     title,
     done: false,
     dueDate: "",
@@ -26,7 +26,7 @@ export function createEmptyProject(
   status: ProjectStatusKey = "planning",
 ): Project {
   return {
-    id: `p-${Date.now()}`,
+    id: `p-${crypto.randomUUID()}`,
     name,
     categoryId,
     status,

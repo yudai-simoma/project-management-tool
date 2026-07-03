@@ -38,6 +38,7 @@ import {
   type Pane4Tab,
   type MainView,
   type Group,
+  type Task,
   STATUS_ORDER,
 } from "@/lib/schema";
 import { createEmptyProject, createMinimalTask } from "@/lib/data/factories";
@@ -46,6 +47,18 @@ import {
   deriveDeadlineRisk,
 } from "@/lib/computed/projects";
 import { STATUS_LABELS } from "@/lib/labels";
+import { runOptimistic, removeById, insertAt } from "@/lib/optimistic";
+import {
+  createCategoryApi,
+  deleteCategoryApi,
+  createProjectApi,
+  updateProjectApi,
+  deleteProjectApi,
+  reorderProjectsApi,
+  createTaskApi,
+  updateTaskApi,
+  deleteTaskApi,
+} from "@/lib/api/workspace-client";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { GlobalHeader } from "@/components/workspace/GlobalHeader";
 import { CategoryPane } from "@/components/workspace/CategoryPane";
@@ -134,6 +147,11 @@ export function Workspace({
 
   // ===== プロジェクトの追加・削除・移動 =====
 
+  // 楽観的更新方針（§2 で確認済み）: ローカル state は即座に更新し、API呼び出しは
+  // 裏で行う。失敗時はローカル state を黙って元に戻す（console.error に記録するのみ、
+  // 見た目・UI部品は追加しない）。`activeProject` は `projects` 配列から都度導出される
+  // ため、追加系のロールバックで対象を配列から取り除けば、選択状態は自動的に
+  // 他のプロジェクトへフォールバックする（追加直後の細かい選択状態までは巻き戻さない）。
   const addProject = useCallback(
     (
       categoryId: string,
@@ -144,6 +162,18 @@ export function Workspace({
       setProjects((prev) => [...prev, newProject]);
       setSelectedCategoryId(categoryId);
       selectProject(newProject.id);
+
+      runOptimistic(
+        () =>
+          createProjectApi({
+            id: newProject.id,
+            name: newProject.name,
+            categoryId: newProject.categoryId,
+            status: newProject.status,
+            deadline: newProject.deadline,
+          }),
+        () => setProjects((prev) => prev.filter((p) => p.id !== newProject.id)),
+      );
     },
     [selectProject],
   );
@@ -168,14 +198,28 @@ export function Workspace({
   // プロジェクトの削除は Pane 2 のみ（§2.2 決定、Pane 1 に削除導線は置かない）。
   const deleteProject = useCallback(
     (id: string) => {
+      let removed: { item: Project; index: number } | null = null;
+      let selectionChanged = false;
       setProjects((prev) => {
-        const next = prev.filter((p) => p.id !== id);
+        const index = prev.findIndex((p) => p.id === id);
+        if (index === -1) return prev;
+        removed = { item: prev[index], index };
+        const next = [...prev.slice(0, index), ...prev.slice(index + 1)];
         if (id === selectedProjectId) {
+          selectionChanged = true;
           setSelectedProjectId(next[0]?.id ?? "");
           setSelectedDetail(null);
         }
         return next;
       });
+
+      runOptimistic(
+        () => deleteProjectApi(id),
+        () => {
+          if (removed) insertAt(setProjects, removed.index, removed.item);
+          if (selectionChanged) setSelectedProjectId(id);
+        },
+      );
     },
     [selectedProjectId],
   );
@@ -185,11 +229,20 @@ export function Workspace({
   // `toIndex` は ProjectListPane 側で計算された、**現在のカテゴリフィルタ後**の
   // 表示上のインデックスなので、projects 配列上の絶対インデックスに変換する際にも
   // 同じフィルタ条件（selectedCategoryId）を適用してカウントする必要がある。
+  // 移動確定後の projects 配列全体の並び順を、まとめて1回の reorder API 呼び出しで
+  // 送る（§2 で確認した方針。プロジェクト数が少ないポートフォリオ管理ツールという
+  // 前提のもと、書き込み量よりも実装のシンプルさ・確実さを優先する）。
   const moveProject = useCallback(
     (id: string, toStatus: ProjectStatusKey, toIndex: number) => {
+      let previous: Project[] = [];
+      let next: Project[] = [];
       setProjects((prev) => {
+        previous = prev;
         const subjectIndex = prev.findIndex((p) => p.id === id);
-        if (subjectIndex < 0) return prev;
+        if (subjectIndex < 0) {
+          next = prev;
+          return prev;
+        }
         const subject = prev[subjectIndex];
 
         const without = prev.filter((_, i) => i !== subjectIndex);
@@ -209,12 +262,27 @@ export function Workspace({
             count++;
           }
         }
-        return [
+        next = [
           ...without.slice(0, absInsertAt),
           updated,
           ...without.slice(absInsertAt),
         ];
+        return next;
       });
+
+      if (next === previous) return;
+
+      runOptimistic(
+        () =>
+          reorderProjectsApi(
+            next.map((p, index) => ({
+              id: p.id,
+              status: p.status,
+              sortOrder: index,
+            })),
+          ),
+        () => setProjects(previous),
+      );
     },
     [selectedCategoryId],
   );
@@ -222,29 +290,106 @@ export function Workspace({
   // ===== カテゴリの追加・削除（SettingsDialog 用） =====
 
   const addCategory = useCallback((name: string) => {
-    setCategories((prev) => [...prev, { id: `cat-${Date.now()}`, name }]);
+    const id = `cat-${crypto.randomUUID()}`;
+    setCategories((prev) => [...prev, { id, name }]);
+
+    runOptimistic(
+      () => createCategoryApi({ id, name }),
+      () => setCategories((prev) => prev.filter((c) => c.id !== id)),
+    );
   }, []);
 
-  const deleteCategory = useCallback((categoryId: string) => {
-    setCategories((prev) => prev.filter((c) => c.id !== categoryId));
-    setSelectedCategoryId((prev) => (prev === categoryId ? null : prev));
-  }, []);
+  // カテゴリ削除は配下のプロジェクト（とそのタスク）も連鎖的に削除する
+  // （SettingsDialog の確認文言「配下のプロジェクトも含めて完全に削除され、
+  // 元に戻せません」の通り。API 側も同じ方針でカスケード削除する）。
+  const deleteCategory = useCallback(
+    (categoryId: string) => {
+      const removedCategory = removeById(setCategories, categoryId);
+
+      let removedProjects: Project[] = [];
+      let fallbackProjectId = "";
+      setProjects((prev) => {
+        removedProjects = prev.filter((p) => p.categoryId === categoryId);
+        const next = prev.filter((p) => p.categoryId !== categoryId);
+        fallbackProjectId = next[0]?.id ?? "";
+        return next;
+      });
+
+      const selectedProjectRemoved = removedProjects.some(
+        (p) => p.id === selectedProjectId,
+      );
+      if (selectedProjectRemoved) {
+        setSelectedProjectId(fallbackProjectId);
+        setSelectedDetail(null);
+      }
+
+      let categorySelectionCleared = false;
+      setSelectedCategoryId((prev) => {
+        if (prev === categoryId) {
+          categorySelectionCleared = true;
+          return null;
+        }
+        return prev;
+      });
+
+      runOptimistic(
+        () => deleteCategoryApi(categoryId),
+        () => {
+          if (removedCategory) {
+            insertAt(
+              setCategories,
+              removedCategory.index,
+              removedCategory.item,
+            );
+          }
+          if (removedProjects.length > 0) {
+            setProjects((prev) => [...prev, ...removedProjects]);
+          }
+          if (selectedProjectRemoved) setSelectedProjectId(selectedProjectId);
+          if (categorySelectionCleared) setSelectedCategoryId(categoryId);
+        },
+      );
+    },
+    [selectedProjectId],
+  );
 
   // ===== タスクの編集（アクティブプロジェクトのタスクを操作） =====
 
   const updateTaskField = useCallback(
     (taskId: string, field: EditableTaskKey, value: string) => {
+      const projectId = selectedProjectId;
+      let previousValue: string | undefined;
       setProjects((prev) =>
-        prev.map((p) =>
-          p.id !== selectedProjectId
-            ? p
-            : {
-                ...p,
-                tasks: p.tasks.map((t) =>
-                  t.id === taskId ? { ...t, [field]: value } : t,
-                ),
-              },
-        ),
+        prev.map((p) => {
+          if (p.id !== projectId) return p;
+          return {
+            ...p,
+            tasks: p.tasks.map((t) => {
+              if (t.id !== taskId) return t;
+              previousValue = t[field];
+              return { ...t, [field]: value };
+            }),
+          };
+        }),
+      );
+
+      runOptimistic(
+        () => updateTaskApi(taskId, { [field]: value }),
+        () => {
+          if (previousValue === undefined) return;
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id !== projectId
+                ? p
+                : {
+                    ...p,
+                    tasks: p.tasks.map((t) =>
+                      t.id === taskId ? { ...t, [field]: previousValue! } : t,
+                    ),
+                  },
+            ),
+          );
+        },
       );
     },
     [selectedProjectId],
@@ -253,17 +398,39 @@ export function Workspace({
   // Pane 3 のチェックボックス、および Pane 4「詳細」タブの完了トグルの両方から呼ばれる。
   const toggleTaskDone = useCallback(
     (taskId: string) => {
+      const projectId = selectedProjectId;
+      let nextDone: boolean | undefined;
       setProjects((prev) =>
-        prev.map((p) =>
-          p.id !== selectedProjectId
-            ? p
-            : {
-                ...p,
-                tasks: p.tasks.map((t) =>
-                  t.id === taskId ? { ...t, done: !t.done } : t,
-                ),
-              },
-        ),
+        prev.map((p) => {
+          if (p.id !== projectId) return p;
+          return {
+            ...p,
+            tasks: p.tasks.map((t) => {
+              if (t.id !== taskId) return t;
+              nextDone = !t.done;
+              return { ...t, done: nextDone };
+            }),
+          };
+        }),
+      );
+
+      if (nextDone === undefined) return;
+      const confirmedNextDone = nextDone;
+      runOptimistic(
+        () => updateTaskApi(taskId, { done: confirmedNextDone }),
+        () =>
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id !== projectId
+                ? p
+                : {
+                    ...p,
+                    tasks: p.tasks.map((t) =>
+                      t.id === taskId ? { ...t, done: !confirmedNextDone } : t,
+                    ),
+                  },
+            ),
+          ),
       );
     },
     [selectedProjectId],
@@ -272,12 +439,25 @@ export function Workspace({
   // Pane 3「+ タスク追加」、および Pane 4 AIアシスタントタブの両方から呼ばれる。
   const addTask = useCallback(
     (title: string) => {
+      const projectId = selectedProjectId;
+      const newTask: Task = createMinimalTask(title);
       setProjects((prev) =>
         prev.map((p) =>
-          p.id !== selectedProjectId
-            ? p
-            : { ...p, tasks: [...p.tasks, createMinimalTask(title)] },
+          p.id !== projectId ? p : { ...p, tasks: [...p.tasks, newTask] },
         ),
+      );
+
+      runOptimistic(
+        () =>
+          createTaskApi(projectId, { id: newTask.id, title: newTask.title }),
+        () =>
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id !== projectId
+                ? p
+                : { ...p, tasks: p.tasks.filter((t) => t.id !== newTask.id) },
+            ),
+          ),
       );
     },
     [selectedProjectId],
@@ -286,15 +466,52 @@ export function Workspace({
   // タスクの削除は Pane 4「詳細」タブの手動削除のみ（AI アシスタントからは実行不可、§2.5 決定）。
   const deleteTask = useCallback(
     (taskId: string) => {
+      const projectId = selectedProjectId;
+      let removed: { item: Task; index: number } | null = null;
       setProjects((prev) =>
-        prev.map((p) =>
-          p.id !== selectedProjectId
-            ? p
-            : { ...p, tasks: p.tasks.filter((t) => t.id !== taskId) },
-        ),
+        prev.map((p) => {
+          if (p.id !== projectId) return p;
+          const index = p.tasks.findIndex((t) => t.id === taskId);
+          if (index === -1) return p;
+          removed = { item: p.tasks[index], index };
+          return {
+            ...p,
+            tasks: [...p.tasks.slice(0, index), ...p.tasks.slice(index + 1)],
+          };
+        }),
       );
-      setSelectedDetail((prev) =>
-        prev?.type === "task" && prev.taskId === taskId ? null : prev,
+
+      let detailCleared = false;
+      setSelectedDetail((prev) => {
+        if (prev?.type === "task" && prev.taskId === taskId) {
+          detailCleared = true;
+          return null;
+        }
+        return prev;
+      });
+
+      runOptimistic(
+        () => deleteTaskApi(taskId),
+        () => {
+          if (removed) {
+            const { item, index } = removed;
+            setProjects((prev) =>
+              prev.map((p) =>
+                p.id !== projectId
+                  ? p
+                  : {
+                      ...p,
+                      tasks: [
+                        ...p.tasks.slice(0, index),
+                        item,
+                        ...p.tasks.slice(index),
+                      ],
+                    },
+              ),
+            );
+          }
+          if (detailCleared) setSelectedDetail({ type: "task", taskId });
+        },
       );
     },
     [selectedProjectId],
@@ -303,8 +520,26 @@ export function Workspace({
   // Pane 3 概要ヘッダー帯の期限編集（`InlineDateField`）から呼ばれる。
   const updateDeadline = useCallback(
     (deadline: string) => {
+      const projectId = selectedProjectId;
+      let previousDeadline: string | undefined;
       setProjects((prev) =>
-        prev.map((p) => (p.id !== selectedProjectId ? p : { ...p, deadline })),
+        prev.map((p) => {
+          if (p.id !== projectId) return p;
+          previousDeadline = p.deadline;
+          return { ...p, deadline };
+        }),
+      );
+
+      runOptimistic(
+        () => updateProjectApi(projectId, { deadline }),
+        () => {
+          if (previousDeadline === undefined) return;
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id !== projectId ? p : { ...p, deadline: previousDeadline! },
+            ),
+          );
+        },
       );
     },
     [selectedProjectId],
