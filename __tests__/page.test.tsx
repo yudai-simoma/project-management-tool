@@ -19,8 +19,8 @@ const projects: Project[] = [
 vi.mock("@/db/repositories/categories", () => ({
   listCategories: vi.fn(async () => categories),
 }));
-vi.mock("@/db/repositories/members", () => ({
-  listMembers: vi.fn(async () => members),
+vi.mock("@/lib/clerk/org-members", () => ({
+  listActiveMembers: vi.fn(async () => members),
 }));
 vi.mock("@/db/repositories/projects", () => ({
   listProjectsWithTasks: vi.fn(async () => projects),
@@ -56,7 +56,7 @@ import Page from "@/app/page";
 import { auth } from "@clerk/nextjs/server";
 
 describe("Page", () => {
-  it("DB（リポジトリ層）から初期データを取得し、Workspace をレンダリングできる", async () => {
+  it("DB（リポジトリ層）・Clerk（メンバー）から初期データを取得し、Workspace をレンダリングできる", async () => {
     render(await Page());
 
     // ワークスペース名（Pane 1 ヘッダー、data/workspace.json 由来）

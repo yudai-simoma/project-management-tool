@@ -18,7 +18,7 @@
 import { Building2, Check, ChevronsUpDown, Plus } from "lucide-react";
 import { useClerk, useOrganization, useOrganizationList } from "@clerk/nextjs";
 
-import { type Role } from "@/lib/schema";
+import { toRole } from "@/lib/auth/roles";
 import { ROLE_LABEL } from "@/lib/labels";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -28,15 +28,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-/** Clerk のロールキー（`org:owner` 等）を、アプリのドメイン型 `Role` に変換する。 */
-function toRole(clerkRole: string | null | undefined): Role {
-  const stripped = clerkRole?.replace(/^org:/, "");
-  if (stripped === "owner" || stripped === "admin" || stripped === "member") {
-    return stripped;
-  }
-  return "member";
-}
 
 export function OrgSwitcher() {
   const { organization, membership, isLoaded: isOrgLoaded } = useOrganization();

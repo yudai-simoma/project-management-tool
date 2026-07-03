@@ -11,7 +11,7 @@
         "title": "要件定義",
         "done": true,
         "dueDate": "2026-06-20",
-        "assigneeId": "m1",
+        "assigneeId": "",
         "memo": ""
       },
       {
@@ -19,7 +19,7 @@
         "title": "画面設計",
         "done": true,
         "dueDate": "2026-06-28",
-        "assigneeId": "m2",
+        "assigneeId": "",
         "memo": "1回目のレビュー対応済み"
       },
       {
@@ -27,7 +27,7 @@
         "title": "実装",
         "done": false,
         "dueDate": "2026-07-04",
-        "assigneeId": "m3",
+        "assigneeId": "",
         "memo": ""
       },
       {
@@ -35,7 +35,7 @@
         "title": "QAテスト",
         "done": false,
         "dueDate": "2026-07-05",
-        "assigneeId": "m5",
+        "assigneeId": "",
         "memo": ""
       }
     ]
@@ -52,7 +52,7 @@
         "title": "要件定義",
         "done": true,
         "dueDate": "2026-06-15",
-        "assigneeId": "m1",
+        "assigneeId": "",
         "memo": ""
       },
       {
@@ -60,7 +60,7 @@
         "title": "設計レビュー",
         "done": true,
         "dueDate": "2026-06-28",
-        "assigneeId": "m2",
+        "assigneeId": "",
         "memo": "セキュリティ観点のレビュー完了"
       },
       {
@@ -68,7 +68,7 @@
         "title": "開発",
         "done": false,
         "dueDate": "2026-07-08",
-        "assigneeId": "m3",
+        "assigneeId": "",
         "memo": ""
       },
       {
@@ -76,7 +76,7 @@
         "title": "本番移行リハーサル",
         "done": false,
         "dueDate": "2026-07-10",
-        "assigneeId": "m3",
+        "assigneeId": "",
         "memo": ""
       }
     ]
@@ -93,7 +93,7 @@
         "title": "要件ヒアリング",
         "done": false,
         "dueDate": "2026-07-20",
-        "assigneeId": "m1",
+        "assigneeId": "",
         "memo": ""
       },
       {
@@ -101,7 +101,7 @@
         "title": "ベンダー選定",
         "done": false,
         "dueDate": "2026-07-31",
-        "assigneeId": "m1",
+        "assigneeId": "",
         "memo": ""
       }
     ]
@@ -118,7 +118,7 @@
         "title": "競合サイト調査",
         "done": true,
         "dueDate": "2026-06-05",
-        "assigneeId": "m2",
+        "assigneeId": "",
         "memo": ""
       },
       {
@@ -126,7 +126,7 @@
         "title": "原稿作成",
         "done": false,
         "dueDate": "2026-06-18",
-        "assigneeId": "m4",
+        "assigneeId": "",
         "memo": "人事部の確認待ち"
       },
       {
@@ -134,7 +134,7 @@
         "title": "コーディング",
         "done": false,
         "dueDate": "2026-06-24",
-        "assigneeId": "m3",
+        "assigneeId": "",
         "memo": ""
       }
     ]
@@ -151,7 +151,7 @@
         "title": "ロゴ案3パターン提案",
         "done": true,
         "dueDate": "2026-06-15",
-        "assigneeId": "m2",
+        "assigneeId": "",
         "memo": ""
       },
       {
@@ -159,7 +159,7 @@
         "title": "経営会議フィードバック反映",
         "done": true,
         "dueDate": "2026-06-30",
-        "assigneeId": "m2",
+        "assigneeId": "",
         "memo": "B案をベースに微調整"
       },
       {
@@ -167,7 +167,7 @@
         "title": "最終ロゴデータ納品",
         "done": false,
         "dueDate": "2026-07-08",
-        "assigneeId": "m2",
+        "assigneeId": "",
         "memo": ""
       }
     ]
@@ -184,7 +184,7 @@
         "title": "7月分投稿カレンダー作成",
         "done": true,
         "dueDate": "2026-06-28",
-        "assigneeId": "m4",
+        "assigneeId": "",
         "memo": ""
       },
       {
@@ -192,7 +192,7 @@
         "title": "投稿画像作成",
         "done": false,
         "dueDate": "2026-07-10",
-        "assigneeId": "m4",
+        "assigneeId": "",
         "memo": ""
       },
       {
@@ -200,7 +200,7 @@
         "title": "月次レポート作成",
         "done": false,
         "dueDate": "2026-07-31",
-        "assigneeId": "m1",
+        "assigneeId": "",
         "memo": ""
       }
     ]
@@ -217,7 +217,7 @@
         "title": "デザイン案作成",
         "done": true,
         "dueDate": "2026-05-20",
-        "assigneeId": "m4",
+        "assigneeId": "",
         "memo": ""
       },
       {
@@ -225,7 +225,7 @@
         "title": "印刷発注",
         "done": true,
         "dueDate": "2026-05-28",
-        "assigneeId": "m4",
+        "assigneeId": "",
         "memo": "納品完了"
       }
     ]
@@ -242,7 +242,7 @@
         "title": "新オフィス候補選定",
         "done": false,
         "dueDate": "",
-        "assigneeId": "m5",
+        "assigneeId": "",
         "memo": "予算確定後に本格着手予定"
       }
     ]

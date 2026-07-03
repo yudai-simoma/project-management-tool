@@ -1,7 +1,0 @@
-[
-  { "id": "m1", "name": "佐藤 健太", "role": "owner" },
-  { "id": "m2", "name": "鈴木 美咲", "role": "admin" },
-  { "id": "m3", "name": "田中 亮", "role": "member" },
-  { "id": "m4", "name": "山田 直子", "role": "member" },
-  { "id": "m5", "name": "伊藤 翔太", "role": "member" }
-]

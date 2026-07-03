@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 
 import {
   categoriesSchema,
-  membersSchema,
   projectsSchema,
   workspaceSchema,
   categorySchema,
@@ -12,18 +11,12 @@ import {
 } from "@/lib/schema";
 
 import categoriesData from "@/data/categories.json";
-import membersData from "@/data/members.json";
 import projectsData from "@/data/projects.json";
 import workspaceData from "@/data/workspace.json";
 
 describe("data/*.json schema validation", () => {
   it("data/categories.json は categoriesSchema を満たす", () => {
     const result = categoriesSchema.safeParse(categoriesData);
-    expect(result.success).toBe(true);
-  });
-
-  it("data/members.json は membersSchema を満たす", () => {
-    const result = membersSchema.safeParse(membersData);
     expect(result.success).toBe(true);
   });
 

@@ -1,16 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { buildSeedRows } from "@/db/seed-data";
-import type { Category, Member, Project } from "@/lib/schema";
+import type { Category, Project } from "@/lib/schema";
 
 const categories: Category[] = [
   { id: "cat1", name: "プロダクト開発" },
   { id: "cat2", name: "社内システム" },
-];
-
-const members: Member[] = [
-  { id: "m1", name: "佐藤 健太", role: "owner" },
-  { id: "m2", name: "鈴木 美咲", role: "member" },
 ];
 
 const projects: Project[] = [
@@ -26,7 +21,7 @@ const projects: Project[] = [
         title: "要件定義",
         done: true,
         dueDate: "2026-06-20",
-        assigneeId: "m1",
+        assigneeId: "user_1",
         memo: "",
       },
       {
@@ -52,19 +47,13 @@ const projects: Project[] = [
 const orgId = "org_test";
 
 describe("buildSeedRows", () => {
-  it("categories に orgId を付与して insert 行に変換し、members は orgId を持たずそのまま変換する", () => {
-    const { categoryRows, memberRows } = buildSeedRows(
-      categories,
-      members,
-      projects,
-      orgId,
-    );
+  it("categories に orgId を付与して insert 行に変換する", () => {
+    const { categoryRows } = buildSeedRows(categories, projects, orgId);
     expect(categoryRows).toEqual(categories.map((c) => ({ ...c, orgId })));
-    expect(memberRows).toEqual(members);
   });
 
   it("projects の配列順を sortOrder として採番し、orgId を付与し、tasks を持たない", () => {
-    const { projectRows } = buildSeedRows(categories, members, projects, orgId);
+    const { projectRows } = buildSeedRows(categories, projects, orgId);
     expect(projectRows).toEqual([
       {
         id: "pr1",
@@ -89,7 +78,7 @@ describe("buildSeedRows", () => {
   });
 
   it("tasks をフラット化し、projectId・orgId とプロジェクト内の sortOrder を付与する（未アサイン=空文字を維持）", () => {
-    const { taskRows } = buildSeedRows(categories, members, projects, orgId);
+    const { taskRows } = buildSeedRows(categories, projects, orgId);
     expect(taskRows).toEqual([
       {
         id: "t1-1",
@@ -97,7 +86,7 @@ describe("buildSeedRows", () => {
         title: "要件定義",
         done: true,
         dueDate: "2026-06-20",
-        assigneeId: "m1",
+        assigneeId: "user_1",
         memo: "",
         sortOrder: 0,
         orgId,
@@ -117,7 +106,7 @@ describe("buildSeedRows", () => {
   });
 
   it("タスク0件のプロジェクトからは何も生成しない", () => {
-    const { taskRows } = buildSeedRows(categories, members, projects, orgId);
+    const { taskRows } = buildSeedRows(categories, projects, orgId);
     expect(taskRows.filter((t) => t.projectId === "pr2")).toEqual([]);
   });
 });

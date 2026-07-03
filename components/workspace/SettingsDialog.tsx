@@ -5,6 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 
 import { type Category } from "@/lib/schema";
 import { DeleteConfirmDialog } from "@/components/workspace/DeleteConfirmDialog";
+import { MemberManagementSection } from "@/components/workspace/MemberManagementSection";
 import { Button } from "@/components/ui/button";
 import {
   DialogContent,
@@ -50,11 +51,11 @@ export function SettingsDialogContent({
 
   return (
     <>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>ワークスペース設定</DialogTitle>
           <DialogDescription>
-            プロジェクトカテゴリやワークスペース名を管理します
+            プロジェクトカテゴリ・メンバー・ワークスペース名を管理します
           </DialogDescription>
         </DialogHeader>
 
@@ -118,6 +119,10 @@ export function SettingsDialogContent({
               </InputGroupAddon>
             </InputGroup>
           </Field>
+
+          <Separator />
+
+          <MemberManagementSection />
 
           <Separator />
 

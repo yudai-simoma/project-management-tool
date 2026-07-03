@@ -1,10 +1,13 @@
 /**
  * Drizzle テーブル定義（Neon / Postgres 向け）。
  *
- * `lib/schema.ts` の zod スキーマ（Category/Member/Project/Task）に対応するテーブルを
+ * `lib/schema.ts` の zod スキーマ（Category/Project/Task）に対応するテーブルを
  * 定義する。カラム名・型は zod スキーマのフィールドにできるだけ一対一で対応させ、
  * 進捗率・期限リスクなどの派生値はカラムとして持たない
  * （`lib/computed/projects.ts` と同様、読み出し側で都度計算する）。
+ *
+ * `Member` はテーブルを持たない（セクション4でメンバー一覧・招待・削除・ロール変更を
+ * Clerk Organizations API に完全移行したため。`lib/clerk/org-members.ts` 参照）。
  *
  * 2点、zod スキーマにない列を追加している（いずれもビジネス上の派生値ではなく、
  * DB化に伴い必要になった技術的な列）:
@@ -15,10 +18,10 @@
  *   列として追加した。CRUD API 化（セクション2）で並び替え時の更新方針を詰める。
  * - `createdAt`: 監査・デバッグ用の一般的な列。zod スキーマにも UI にも影響しない。
  *
- * `Task.assigneeId` は `Member.id` への参照だが、未アサイン時は空文字を持つ
- * （zod スキーマも `z.string()` で null 不可）。空文字は実在しない外部キー値になるため、
- * DB レベルの外部キー制約は付けていない（`categoryId`/`projectId` のような必須の参照とは
- * 異なり、任意参照のため）。参照整合性はアプリ層（zod・API層）で担保する方針を踏襲する。
+ * `Task.assigneeId` は Clerk のユーザーID（`user_xxx`）への参照だが、未アサイン時は
+ * 空文字を持つ（zod スキーマも `z.string()` で null 不可）。参照先が別システム（Clerk）の
+ * ため、そもそも DB レベルの外部キー制約は付けられない。参照整合性はアプリ層（zod・API層）
+ * で担保する方針を踏襲する。
  *
  * `orgId`（categories/projects/tasks）: Clerk Organizations の組織ID（`org_xxx`）で、
  * 「組織 = ワークスペース」（`docs/mock-implementation-plan.md` §2.4, §9.2）に基づき
@@ -28,9 +31,6 @@
  * 除去する）。`tasks.orgId` は `projects.orgId` の非正規化コピー（作成時に一度だけ設定し、
  * 以後変更しない）で、タスク単体の更新・削除時に JOIN なしで組織所有権を検証できるように
  * するための列（Category/Project同様、参照経路を辿らなくても直接 `where` で絞り込める）。
- * `members` テーブルには追加していない（セクション4でメンバー一覧をClerk Organizations
- * APIに完全移行する予定のため、今回は一時的にグローバル共有データのまま据え置く。
- * 詳細はセクション3の実装メモを参照）。
  */
 
 import { relations } from "drizzle-orm";
@@ -43,8 +43,6 @@ import {
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
-
-export const roleEnum = pgEnum("role", ["owner", "admin", "member"]);
 
 export const projectStatusEnum = pgEnum("project_status", [
   "planning",
@@ -68,17 +66,6 @@ export const categories = pgTable(
   },
   (table) => [index("categories_org_id_idx").on(table.orgId)],
 );
-
-// ===== 組織メンバー =====
-
-export const members = pgTable("members", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  role: roleEnum("role").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
 
 // ===== プロジェクト =====
 
@@ -154,8 +141,6 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
 
 export type CategoryRow = typeof categories.$inferSelect;
 export type NewCategoryRow = typeof categories.$inferInsert;
-export type MemberRow = typeof members.$inferSelect;
-export type NewMemberRow = typeof members.$inferInsert;
 export type ProjectRowDb = typeof projects.$inferSelect;
 export type NewProjectRow = typeof projects.$inferInsert;
 export type TaskRowDb = typeof tasks.$inferSelect;

@@ -1,36 +1,14 @@
 /**
  * `Workspace.tsx`（クライアントコンポーネント）から `app/api/**` の Route Handler を
- * 呼び出すための薄い fetch ラッパー。
+ * 呼び出すための薄い関数群。fetch ラッパー本体（`apiFetch`）は `lib/api/http.ts` に
+ * 切り出してあり、`lib/api/members-client.ts` と共用する。
  *
  * 失敗時（レスポンスが non-OK）は Error を throw するのみで、リトライやロールバックは
  * 呼び出し側（`Workspace.tsx` の各ハンドラ、`lib/optimistic.ts` の `runOptimistic`）に委ねる。
  */
 
+import { apiFetch } from "@/lib/api/http";
 import type { Category, Project, ProjectStatusKey, Task } from "@/lib/schema";
-
-async function apiFetch<T>(input: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
-
-  if (!res.ok) {
-    const message = await res
-      .json()
-      .then((body: unknown) =>
-        typeof body === "object" && body !== null && "error" in body
-          ? String((body as { error: unknown }).error)
-          : null,
-      )
-      .catch(() => null);
-    throw new Error(
-      message ?? `APIリクエストに失敗しました (status: ${res.status})`,
-    );
-  }
-
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
-}
 
 // ===== カテゴリ =====
 
@@ -134,6 +112,5 @@ export function deleteTaskApi(id: string): Promise<void> {
   return apiFetch<void>(`/api/tasks/${id}`, { method: "DELETE" });
 }
 
-// メンバー管理UIは §4（Clerk Organizations）で実装するため、
-// メンバー作成/更新/削除の fetch ラッパーは本セクションでは追加しない
-// （読み取りは `app/page.tsx` が `db/repositories/members` を直接使う）。
+// メンバーの招待/削除/ロール変更は `lib/api/members-client.ts` を参照
+// （メンバー管理ダイアログ専用の状態を持つため、`Workspace.tsx` の state とは独立させている）。

@@ -21,22 +21,16 @@ export const updateCategorySchema = z.object({
   name: z.string().min(1),
 });
 
-// ===== メンバー =====
+// ===== メンバー（Clerk Organizations 経由） =====
 
-export const createMemberSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
+export const inviteMemberSchema = z.object({
+  email: z.string().email(),
   role: roleSchema,
 });
 
-export const updateMemberSchema = z
-  .object({
-    name: z.string().min(1).optional(),
-    role: roleSchema.optional(),
-  })
-  .refine((v) => Object.keys(v).length > 0, {
-    message: "更新項目が指定されていません",
-  });
+export const updateMemberRoleSchema = z.object({
+  role: roleSchema,
+});
 
 // ===== プロジェクト =====
 

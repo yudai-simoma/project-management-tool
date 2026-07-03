@@ -3,6 +3,7 @@
  * エラーレスポンスの形（`{ error: string }`）を全 API で統一する。
  */
 
+import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { NextResponse } from "next/server";
 import type { ZodError } from "zod";
 
@@ -24,4 +25,22 @@ export async function readJsonBody(request: Request): Promise<unknown> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Clerk Organizations API（`lib/clerk/org-members.ts`）呼び出しが投げるエラーを
+ * `{ error }` 形式のレスポンスに変換する。存在しないユーザーID・重複した招待など、
+ * DBリポジトリの `null` 返却では表現できない失敗（Clerk側のバリデーション）が
+ * 実際に発生しうるため、専用のハンドリングを用意する。Clerk由来のエラーでなければ
+ * 再スローし、Next.js の既定のエラーハンドリングに委ねる。
+ */
+export function clerkErrorResponse(error: unknown) {
+  if (isClerkAPIResponseError(error)) {
+    const detail = error.errors[0];
+    return NextResponse.json(
+      { error: detail?.longMessage ?? detail?.message ?? error.message },
+      { status: error.status },
+    );
+  }
+  throw error;
 }

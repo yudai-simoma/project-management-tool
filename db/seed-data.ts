@@ -7,33 +7,28 @@
  *
  * セクション3で `orgId` を追加した。シードデータは単一組織向けのため、呼び出し側
  * （`db/seed.ts`）が環境変数 `SEED_ORG_ID` から1つの組織IDを渡し、categories/projects/
- * tasks の全行にスタンプする（`members` は組織スコープ化していないため対象外）。
+ * tasks の全行にスタンプする。`members` はセクション4で Clerk Organizations API に
+ * 完全移行したため、シード対象から除外した（メンバーは Clerk 側で組織を作成した時点で
+ * 既に存在する）。
  */
 
-import type { Category, Member, Project } from "@/lib/schema";
+import type { Category, Project } from "@/lib/schema";
 
-import type {
-  NewCategoryRow,
-  NewMemberRow,
-  NewProjectRow,
-  NewTaskRow,
-} from "./schema";
+import type { NewCategoryRow, NewProjectRow, NewTaskRow } from "./schema";
 
 export type SeedRows = {
   categoryRows: NewCategoryRow[];
-  memberRows: NewMemberRow[];
   projectRows: NewProjectRow[];
   taskRows: NewTaskRow[];
 };
 
 /**
- * `categories`/`members`/`projects` の配列順を、そのまま `sortOrder` として採番する
+ * `categories`/`projects` の配列順を、そのまま `sortOrder` として採番する
  * （モックの JSON 配列順 = カンバン上の表示順、という現行の仕様をそのまま引き継ぐ）。
  * `tasks` の `sortOrder` はプロジェクトごとに 0 起算で振り直す。
  */
 export function buildSeedRows(
   categories: Category[],
-  members: Member[],
   projects: Project[],
   orgId: string,
 ): SeedRows {
@@ -41,12 +36,6 @@ export function buildSeedRows(
     id: c.id,
     name: c.name,
     orgId,
-  }));
-
-  const memberRows: NewMemberRow[] = members.map((m) => ({
-    id: m.id,
-    name: m.name,
-    role: m.role,
   }));
 
   const projectRows: NewProjectRow[] = projects.map((p, index) => ({
@@ -73,5 +62,5 @@ export function buildSeedRows(
     })),
   );
 
-  return { categoryRows, memberRows, projectRows, taskRows };
+  return { categoryRows, projectRows, taskRows };
 }

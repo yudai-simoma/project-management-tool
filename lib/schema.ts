@@ -88,7 +88,6 @@ export type Project = z.infer<typeof projectSchema>;
 // ===== JSON 全体用スキーマ =====
 
 export const categoriesSchema = z.array(categorySchema);
-export const membersSchema = z.array(memberSchema);
 export const projectsSchema = z.array(projectSchema);
 export const workspaceSchema = z.object({
   name: z.string(),
