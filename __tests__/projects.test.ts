@@ -10,6 +10,7 @@ import {
   getTaskProgressSummaryForTask,
   getStatusCounts,
   getTaskCalendarDays,
+  getPortfolioDashboardSummary,
 } from "@/lib/computed/projects";
 
 const baseTask = (over: Partial<Task>): Task => ({
@@ -149,7 +150,11 @@ describe("getTaskCompletionGroups", () => {
       baseTask({ id: "large-open-2", parentTaskId: null, level: "large" }),
       baseTask({ id: "small-open", parentTaskId: "large-open", done: false }),
       baseTask({ id: "small-done", parentTaskId: "large-done", done: true }),
-      baseTask({ id: "small-open-2", parentTaskId: "large-open-2", done: false }),
+      baseTask({
+        id: "small-open-2",
+        parentTaskId: "large-open-2",
+        done: false,
+      }),
     ];
 
     const groups = getTaskCompletionGroups(
@@ -230,6 +235,162 @@ describe("getStatusCounts", () => {
       inProgress: 0,
       review: 0,
       done: 0,
+    });
+  });
+});
+
+describe("getPortfolioDashboardSummary", () => {
+  const referenceDate = new Date(2026, 6, 3);
+  const members = [
+    { id: "m-1", name: "佐藤", role: "member" as const },
+    { id: "m-2", name: "鈴木", role: "admin" as const },
+  ];
+
+  it("リスクKPI・平均進捗・未完了タスク数を集計する", () => {
+    const summary = getPortfolioDashboardSummary(
+      [
+        baseProject({
+          id: "overdue",
+          name: "期限超過",
+          deadline: "2026-07-01",
+          tasks: [
+            baseTask({ id: "large-1", parentTaskId: null, level: "large" }),
+            baseTask({
+              id: "small-1",
+              parentTaskId: "large-1",
+              dueDate: "2026-07-01",
+              assigneeId: "m-1",
+            }),
+          ],
+        }),
+        baseProject({
+          id: "soon",
+          name: "期限間近",
+          deadline: "2026-07-10",
+          tasks: [
+            baseTask({ id: "large-2", parentTaskId: null, level: "large" }),
+            baseTask({
+              id: "small-2",
+              parentTaskId: "large-2",
+              dueDate: "2026-07-10",
+              assigneeId: "m-2",
+            }),
+            baseTask({
+              id: "small-3",
+              parentTaskId: "large-2",
+              done: true,
+            }),
+          ],
+        }),
+        baseProject({
+          id: "done",
+          name: "完了",
+          status: "done",
+          deadline: "2026-07-01",
+          tasks: [
+            baseTask({ id: "large-3", parentTaskId: null, level: "large" }),
+            baseTask({
+              id: "small-4",
+              parentTaskId: "large-3",
+              done: true,
+            }),
+          ],
+        }),
+      ],
+      members,
+      referenceDate,
+    );
+
+    expect(summary.overdueProjectCount).toBe(1);
+    expect(summary.dueSoonProjectCount).toBe(1);
+    expect(summary.overdueTaskCount).toBe(1);
+    expect(summary.dueSoonTaskCount).toBe(1);
+    expect(summary.averageProgress).toBe(50);
+    expect(summary.openTaskCount).toBe(4);
+    expect(summary.projectSummaries.map((item) => item.project.id)).toEqual([
+      "overdue",
+      "soon",
+      "done",
+    ]);
+  });
+
+  it("直近期限タスクは未完了のみ期限順で最大10件に絞る", () => {
+    const project = baseProject({
+      id: "p-1",
+      tasks: [
+        baseTask({ id: "large-1", parentTaskId: null, level: "large" }),
+        ...Array.from({ length: 12 }, (_, index) =>
+          baseTask({
+            id: `small-${index}`,
+            parentTaskId: "large-1",
+            dueDate: `2026-07-${String(index + 1).padStart(2, "0")}`,
+            done: index === 0,
+          }),
+        ),
+      ],
+    });
+
+    const summary = getPortfolioDashboardSummary(
+      [project],
+      members,
+      referenceDate,
+    );
+
+    expect(summary.upcomingTasks).toHaveLength(10);
+    expect(summary.upcomingTasks.map((item) => item.task.id)).toEqual([
+      "small-1",
+      "small-2",
+      "small-3",
+      "small-4",
+      "small-5",
+      "small-6",
+      "small-7",
+      "small-8",
+      "small-9",
+      "small-10",
+    ]);
+  });
+
+  it("メンバー別ワークロードは未アサインを含めて負荷が重い順に並べる", () => {
+    const project = baseProject({
+      tasks: [
+        baseTask({ id: "large-1", parentTaskId: null, level: "large" }),
+        baseTask({
+          id: "small-1",
+          parentTaskId: "large-1",
+          assigneeId: "m-1",
+          dueDate: "2026-07-01",
+        }),
+        baseTask({
+          id: "small-2",
+          parentTaskId: "large-1",
+          assigneeId: "m-1",
+          dueDate: "2026-07-10",
+        }),
+        baseTask({
+          id: "small-3",
+          parentTaskId: "large-1",
+          assigneeId: "",
+          dueDate: "2026-07-20",
+        }),
+      ],
+    });
+
+    const summary = getPortfolioDashboardSummary(
+      [project],
+      members,
+      referenceDate,
+    );
+
+    expect(summary.memberWorkloads.map((item) => item.memberName)).toEqual([
+      "佐藤",
+      "未アサイン",
+      "鈴木",
+    ]);
+    expect(summary.memberWorkloads[0]).toMatchObject({
+      openTaskCount: 2,
+      overdueTaskCount: 1,
+      dueSoonTaskCount: 1,
     });
   });
 });

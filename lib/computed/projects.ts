@@ -18,6 +18,7 @@ import {
 import {
   type Project,
   type Task,
+  type Member,
   type DeadlineRisk,
   type ProjectStatusKey,
   STATUS_ORDER,
@@ -45,6 +46,52 @@ export type TaskCompletionGroups = {
   openTasks: Task[];
   completedTasks: Task[];
 };
+
+export type PortfolioRiskLevel = "danger" | "warning" | "success";
+
+export type PortfolioProjectSummary = {
+  project: Project;
+  progress: number;
+  doneCount: number;
+  totalCount: number;
+  openTaskCount: number;
+  riskLevel: PortfolioRiskLevel;
+  deadlineRisk: DeadlineRisk;
+};
+
+export type PortfolioTaskSummary = {
+  project: Project;
+  task: Task;
+  assigneeName: string;
+  parentLabel: string;
+  riskLevel: PortfolioRiskLevel;
+  deadlineRisk: DeadlineRisk;
+};
+
+export type PortfolioMemberWorkload = {
+  memberId: string;
+  memberName: string;
+  openTaskCount: number;
+  overdueTaskCount: number;
+  dueSoonTaskCount: number;
+};
+
+export type PortfolioDashboardSummary = {
+  overdueProjectCount: number;
+  dueSoonProjectCount: number;
+  overdueTaskCount: number;
+  dueSoonTaskCount: number;
+  averageProgress: number;
+  openTaskCount: number;
+  projectSummaries: PortfolioProjectSummary[];
+  upcomingTasks: PortfolioTaskSummary[];
+  memberWorkloads: PortfolioMemberWorkload[];
+  statusCounts: Record<ProjectStatusKey, number>;
+};
+
+const UNASSIGNED_MEMBER_ID = "__unassigned";
+const UNASSIGNED_MEMBER_NAME = "未アサイン";
+const UPCOMING_TASK_LIMIT = 10;
 
 /**
  * プロジェクトの進捗率（0〜100）。タスクの完了比率から自動計算する。
@@ -229,7 +276,7 @@ export function getTaskCalendarDays(tasks: Task[]): TaskCalendarDay[] {
   );
 }
 
-function isTaskComplete(tasks: Task[], task: Task): boolean {
+export function isTaskComplete(tasks: Task[], task: Task): boolean {
   if (task.level === "small") return task.done;
 
   const { done, total } = getSmallTaskCounts(tasks, task.id);
@@ -244,7 +291,8 @@ function isDescendantOf(
   let currentParentId = task.parentTaskId;
   while (currentParentId) {
     if (currentParentId === ancestorTaskId) return true;
-    currentParentId = findTaskById(tasks, currentParentId)?.parentTaskId ?? null;
+    currentParentId =
+      findTaskById(tasks, currentParentId)?.parentTaskId ?? null;
   }
   return false;
 }
@@ -263,4 +311,211 @@ export function getStatusCounts(
     counts[project.status]++;
   }
   return counts;
+}
+
+export function getPortfolioDashboardSummary(
+  projects: Project[],
+  members: Member[],
+  referenceDate: Date = new Date(),
+): PortfolioDashboardSummary {
+  const memberById = new Map(members.map((member) => [member.id, member]));
+  const workloads = new Map<string, PortfolioMemberWorkload>();
+  const projectSummaries: PortfolioProjectSummary[] = [];
+  const taskSummaries: PortfolioTaskSummary[] = [];
+
+  for (const member of members) {
+    workloads.set(member.id, {
+      memberId: member.id,
+      memberName: member.name,
+      openTaskCount: 0,
+      overdueTaskCount: 0,
+      dueSoonTaskCount: 0,
+    });
+  }
+  workloads.set(UNASSIGNED_MEMBER_ID, {
+    memberId: UNASSIGNED_MEMBER_ID,
+    memberName: UNASSIGNED_MEMBER_NAME,
+    openTaskCount: 0,
+    overdueTaskCount: 0,
+    dueSoonTaskCount: 0,
+  });
+
+  for (const project of projects) {
+    const progress = getProjectProgress(project);
+    const { done, total } = getTaskCounts(project);
+    const complete = isProjectComplete(project);
+    const deadlineRisk = deriveDeadlineRisk(project.deadline, referenceDate);
+    const riskLevel = getPortfolioRiskLevel(deadlineRisk, complete);
+    const openTasks = project.tasks.filter(
+      (task) => !isTaskComplete(project.tasks, task),
+    );
+
+    projectSummaries.push({
+      project,
+      progress,
+      doneCount: done,
+      totalCount: total,
+      openTaskCount: openTasks.length,
+      riskLevel,
+      deadlineRisk,
+    });
+
+    for (const task of openTasks) {
+      const taskDeadlineRisk = deriveDeadlineRisk(task.dueDate, referenceDate);
+      const taskRiskLevel = getPortfolioRiskLevel(taskDeadlineRisk, false);
+      const assigneeName =
+        memberById.get(task.assigneeId)?.name ?? UNASSIGNED_MEMBER_NAME;
+      const taskSummary: PortfolioTaskSummary = {
+        project,
+        task,
+        assigneeName,
+        parentLabel: getParentTaskLabel(project.tasks, task),
+        riskLevel: taskRiskLevel,
+        deadlineRisk: taskDeadlineRisk,
+      };
+      taskSummaries.push(taskSummary);
+
+      const workload = getOrCreateWorkload(
+        workloads,
+        memberById,
+        task.assigneeId,
+      );
+      workload.openTaskCount++;
+      if (taskRiskLevel === "danger") workload.overdueTaskCount++;
+      if (taskRiskLevel === "warning") workload.dueSoonTaskCount++;
+    }
+  }
+
+  const overdueProjectCount = projectSummaries.filter(
+    (summary) => summary.riskLevel === "danger",
+  ).length;
+  const dueSoonProjectCount = projectSummaries.filter(
+    (summary) => summary.riskLevel === "warning",
+  ).length;
+  const overdueTaskCount = taskSummaries.filter(
+    (summary) => summary.riskLevel === "danger",
+  ).length;
+  const dueSoonTaskCount = taskSummaries.filter(
+    (summary) => summary.riskLevel === "warning",
+  ).length;
+  const averageProgress =
+    projects.length === 0
+      ? 0
+      : Math.round(
+          projectSummaries.reduce((sum, summary) => sum + summary.progress, 0) /
+            projects.length,
+        );
+
+  return {
+    overdueProjectCount,
+    dueSoonProjectCount,
+    overdueTaskCount,
+    dueSoonTaskCount,
+    averageProgress,
+    openTaskCount: taskSummaries.length,
+    projectSummaries: projectSummaries.sort(comparePortfolioProjectSummaries),
+    upcomingTasks: taskSummaries
+      .filter((summary) => parseISODate(summary.task.dueDate))
+      .sort(comparePortfolioTaskSummaries)
+      .slice(0, UPCOMING_TASK_LIMIT),
+    memberWorkloads: [...workloads.values()].sort(compareMemberWorkloads),
+    statusCounts: getStatusCounts(projects),
+  };
+}
+
+function isProjectComplete(project: Project): boolean {
+  if (project.status === "done") return true;
+  const { done, total } = getTaskCounts(project);
+  return total > 0 && done === total;
+}
+
+function getPortfolioRiskLevel(
+  deadlineRisk: DeadlineRisk,
+  complete: boolean,
+): PortfolioRiskLevel {
+  if (complete) return "success";
+  if (deadlineRisk === "overdue") return "danger";
+  if (deadlineRisk === "dueSoon") return "warning";
+  return "success";
+}
+
+function getParentTaskLabel(tasks: Task[], task: Task): string {
+  const parents = getTaskLineage(tasks, task).slice(0, -1);
+  return parents.length > 0
+    ? parents.map((parent) => parent.title).join(" / ")
+    : "プロジェクト直下";
+}
+
+function getOrCreateWorkload(
+  workloads: Map<string, PortfolioMemberWorkload>,
+  memberById: Map<string, Member>,
+  assigneeId: string,
+): PortfolioMemberWorkload {
+  const memberId = assigneeId || UNASSIGNED_MEMBER_ID;
+  const existing = workloads.get(memberId);
+  if (existing) return existing;
+
+  const memberName = memberById.get(memberId)?.name ?? "不明なメンバー";
+  const workload: PortfolioMemberWorkload = {
+    memberId,
+    memberName,
+    openTaskCount: 0,
+    overdueTaskCount: 0,
+    dueSoonTaskCount: 0,
+  };
+  workloads.set(memberId, workload);
+  return workload;
+}
+
+function comparePortfolioProjectSummaries(
+  a: PortfolioProjectSummary,
+  b: PortfolioProjectSummary,
+) {
+  return (
+    compareRiskLevel(a.riskLevel, b.riskLevel) ||
+    compareDateString(a.project.deadline, b.project.deadline) ||
+    a.project.name.localeCompare(b.project.name, "ja")
+  );
+}
+
+function comparePortfolioTaskSummaries(
+  a: PortfolioTaskSummary,
+  b: PortfolioTaskSummary,
+) {
+  return (
+    compareDateString(a.task.dueDate, b.task.dueDate) ||
+    compareRiskLevel(a.riskLevel, b.riskLevel) ||
+    a.task.title.localeCompare(b.task.title, "ja")
+  );
+}
+
+function compareMemberWorkloads(
+  a: PortfolioMemberWorkload,
+  b: PortfolioMemberWorkload,
+) {
+  return (
+    b.openTaskCount - a.openTaskCount ||
+    b.overdueTaskCount - a.overdueTaskCount ||
+    b.dueSoonTaskCount - a.dueSoonTaskCount ||
+    a.memberName.localeCompare(b.memberName, "ja")
+  );
+}
+
+function compareRiskLevel(a: PortfolioRiskLevel, b: PortfolioRiskLevel) {
+  return getRiskRank(a) - getRiskRank(b);
+}
+
+function getRiskRank(riskLevel: PortfolioRiskLevel): number {
+  if (riskLevel === "danger") return 0;
+  if (riskLevel === "warning") return 1;
+  return 2;
+}
+
+function compareDateString(a: string, b: string): number {
+  const dateA = parseISODate(a);
+  const dateB = parseISODate(b);
+  if (dateA && dateB) return compareAsc(dateA, dateB);
+  if (dateA) return -1;
+  if (dateB) return 1;
+  return 0;
 }

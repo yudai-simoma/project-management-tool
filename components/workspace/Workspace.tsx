@@ -46,11 +46,8 @@ import {
   type Task,
 } from "@/lib/schema";
 import { createEmptyProject, createMinimalTask } from "@/lib/data/factories";
-import {
-  findTaskById,
-  getLargeTasks,
-} from "@/lib/computed/projects";
-import { AI_CHAT_GREETING } from "@/lib/labels";
+import { findTaskById, getLargeTasks } from "@/lib/computed/projects";
+import { AI_CHAT_GREETING, PANE4_SECTION_IDS } from "@/lib/labels";
 import {
   GEMINI_FLASH_LATEST_CONTEXT_TOKENS,
   GEMINI_FLASH_LATEST_MODEL_ID,
@@ -222,7 +219,9 @@ export function Workspace({
       const project = projects.find((p) => p.id === id);
       setSelectedProjectId(id);
       setSelectedHierarchyTaskId(
-        getLargeTasks(project?.tasks ?? [])[0]?.id ?? project?.tasks[0]?.id ?? null,
+        getLargeTasks(project?.tasks ?? [])[0]?.id ??
+          project?.tasks[0]?.id ??
+          null,
       );
       setSelectedDetail(null);
       setPane4Tab("ai");
@@ -237,6 +236,32 @@ export function Workspace({
     setSelectedDetail(null);
     setMainView("workspace");
   }, []);
+
+  const openDashboardProject = useCallback(
+    (projectId: string) => {
+      selectProject(projectId);
+    },
+    [selectProject],
+  );
+
+  const openDashboardTask = useCallback(
+    (projectId: string, taskId: string) => {
+      const project = projects.find((p) => p.id === projectId);
+      const task = findTaskById(project?.tasks ?? [], taskId);
+      setSelectedProjectId(projectId);
+      setSelectedHierarchyTaskId(
+        task?.level === "small"
+          ? (task.parentTaskId ?? task.id)
+          : (task?.id ?? null),
+      );
+      setSelectedDetail({ type: "task", taskId });
+      setScrollAnchor(PANE4_SECTION_IDS.detail.info);
+      setPane4Tab("detail");
+      setPane4Open(true);
+      setMainView("workspace");
+    },
+    [projects],
+  );
 
   // ===== プロジェクトの追加・削除 =====
 
@@ -556,7 +581,12 @@ export function Workspace({
             Pane 2 / Pane 3 / Pane 4（もしくは全体ダッシュボード）を横並びにする。 */}
         <div className="flex min-h-0 flex-1">
           {mainView === "dashboard" ? (
-            <PortfolioDashboardPane projects={projects} />
+            <PortfolioDashboardPane
+              projects={projects}
+              members={members}
+              onOpenProject={openDashboardProject}
+              onOpenTask={openDashboardTask}
+            />
           ) : (
             <>
               <ProjectListPane
