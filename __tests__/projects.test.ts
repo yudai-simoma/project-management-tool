@@ -3,8 +3,11 @@ import { describe, it, expect } from "vitest";
 import { type Project, type Task } from "@/lib/schema";
 import {
   getProjectProgress,
+  getTaskCompletionGroups,
   deriveDeadlineRisk,
   getTaskCounts,
+  getTaskProgressSummary,
+  getTaskProgressSummaryForTask,
   getStatusCounts,
   getTaskCalendarDays,
 } from "@/lib/computed/projects";
@@ -89,6 +92,92 @@ describe("getTaskCounts", () => {
       done: 0,
       total: 0,
     });
+  });
+});
+
+describe("getTaskProgressSummary", () => {
+  it("親タスクに小項目がなければ0%", () => {
+    const tasks = [
+      baseTask({ id: "large-1", parentTaskId: null, level: "large" }),
+    ];
+
+    expect(getTaskProgressSummary(tasks, "large-1")).toEqual({
+      done: 0,
+      total: 0,
+      percent: 0,
+    });
+  });
+
+  it("大項目は配下の小項目完了率で算出する", () => {
+    const tasks = [
+      baseTask({ id: "large-1", parentTaskId: null, level: "large" }),
+      baseTask({ id: "medium-1", parentTaskId: "large-1", level: "medium" }),
+      baseTask({ id: "small-1", parentTaskId: "medium-1", done: true }),
+      baseTask({ id: "small-2", parentTaskId: "medium-1", done: false }),
+      baseTask({ id: "small-3", parentTaskId: "large-1", done: true }),
+    ];
+
+    expect(getTaskProgressSummary(tasks, "large-1")).toEqual({
+      done: 2,
+      total: 3,
+      percent: 67,
+    });
+  });
+
+  it("小項目は未完了0%、完了100%", () => {
+    const openTask = baseTask({ id: "small-1", done: false });
+    const doneTask = baseTask({ id: "small-2", done: true });
+
+    expect(getTaskProgressSummaryForTask([openTask], openTask)).toEqual({
+      done: 0,
+      total: 1,
+      percent: 0,
+    });
+    expect(getTaskProgressSummaryForTask([doneTask], doneTask)).toEqual({
+      done: 1,
+      total: 1,
+      percent: 100,
+    });
+  });
+});
+
+describe("getTaskCompletionGroups", () => {
+  it("未完了タスクを上、完了済みタスクを下に分け、元の順序を保つ", () => {
+    const tasks = [
+      baseTask({ id: "large-open", parentTaskId: null, level: "large" }),
+      baseTask({ id: "large-done", parentTaskId: null, level: "large" }),
+      baseTask({ id: "large-open-2", parentTaskId: null, level: "large" }),
+      baseTask({ id: "small-open", parentTaskId: "large-open", done: false }),
+      baseTask({ id: "small-done", parentTaskId: "large-done", done: true }),
+      baseTask({ id: "small-open-2", parentTaskId: "large-open-2", done: false }),
+    ];
+
+    const groups = getTaskCompletionGroups(
+      tasks,
+      tasks.filter((task) => task.level === "large"),
+    );
+
+    expect(groups.openTasks.map((task) => task.id)).toEqual([
+      "large-open",
+      "large-open-2",
+    ]);
+    expect(groups.completedTasks.map((task) => task.id)).toEqual([
+      "large-done",
+    ]);
+  });
+
+  it("小項目はdoneフラグで完了済みに分ける", () => {
+    const tasks = [
+      baseTask({ id: "small-open", done: false }),
+      baseTask({ id: "small-done", done: true }),
+    ];
+
+    const groups = getTaskCompletionGroups(tasks, tasks);
+
+    expect(groups.openTasks.map((task) => task.id)).toEqual(["small-open"]);
+    expect(groups.completedTasks.map((task) => task.id)).toEqual([
+      "small-done",
+    ]);
   });
 });
 

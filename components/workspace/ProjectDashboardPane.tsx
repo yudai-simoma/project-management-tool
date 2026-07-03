@@ -1,7 +1,8 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useState } from "react";
-import { ArrowUpRight, Plus } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -13,16 +14,24 @@ import {
 import {
   findTaskById,
   getSmallTasks,
+  getTaskCompletionGroups,
   getTaskLineage,
+  getTaskProgressSummaryForTask,
 } from "@/lib/computed/projects";
 import { PANE4_SECTION_IDS } from "@/lib/labels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { AddItemDialog } from "@/components/workspace/AddItemDialog";
+import { TaskProgressBar } from "@/components/workspace/TaskProgressBar";
 
 function JumpIcon({ selected }: { selected: boolean }) {
   return (
@@ -59,6 +68,7 @@ export function ProjectDashboardPane({
   const [addOpen, setAddOpen] = useState(false);
   const activeTask = findTaskById(project.tasks, activeTaskId);
   const smallTasks = activeTask ? getSmallTasks(project.tasks, activeTask.id) : [];
+  const smallTaskGroups = getTaskCompletionGroups(project.tasks, smallTasks);
   const selectedSmallTask =
     selectedDetail?.type === "task"
       ? findTaskById(project.tasks, selectedDetail.taskId)
@@ -85,6 +95,15 @@ export function ProjectDashboardPane({
                   </div>
                 )}
                 <TaskMeta task={activeTask} members={members} />
+                {activeTask && (
+                  <TaskProgressBar
+                    title={activeTask.title}
+                    summary={getTaskProgressSummaryForTask(
+                      project.tasks,
+                      activeTask,
+                    )}
+                  />
+                )}
               </div>
             </CardContent>
           </Card>
@@ -111,28 +130,27 @@ export function ProjectDashboardPane({
                 </p>
               ) : (
                 <div className="flex flex-col gap-1">
-                  {smallTasks.map((task, index) => {
-                    const selected =
-                      selectedDetail?.type === "task" &&
-                      selectedDetail.taskId === task.id;
-                    return (
-                      <div key={task.id}>
-                        {index > 0 && <Separator className="my-1" />}
-                        <SmallTaskRow
-                          task={task}
-                          members={members}
-                          selected={selected}
-                          onToggleDone={() => onToggleTaskDone(task.id)}
-                          onOpen={() =>
-                            onOpenDetail(
-                              { type: "task", taskId: task.id },
-                              PANE4_SECTION_IDS.detail.info,
-                            )
-                          }
-                        />
-                      </div>
-                    );
-                  })}
+                  <SmallTaskList
+                    tasks={smallTaskGroups.openTasks}
+                    projectTasks={project.tasks}
+                    members={members}
+                    selectedDetail={selectedDetail}
+                    onToggleTaskDone={onToggleTaskDone}
+                    onOpenDetail={onOpenDetail}
+                  />
+
+                  <CompletedTaskSection
+                    count={smallTaskGroups.completedTasks.length}
+                  >
+                    <SmallTaskList
+                      tasks={smallTaskGroups.completedTasks}
+                      projectTasks={project.tasks}
+                      members={members}
+                      selectedDetail={selectedDetail}
+                      onToggleTaskDone={onToggleTaskDone}
+                      onOpenDetail={onOpenDetail}
+                    />
+                  </CompletedTaskSection>
                 </div>
               )}
             </CardContent>
@@ -146,6 +164,13 @@ export function ProjectDashboardPane({
               <CardContent>
                 <div className="flex flex-col gap-3">
                   <TaskMeta task={selectedSmallTask} members={members} />
+                  <TaskProgressBar
+                    title={selectedSmallTask.title}
+                    summary={getTaskProgressSummaryForTask(
+                      project.tasks,
+                      selectedSmallTask,
+                    )}
+                  />
                   {selectedSmallTask.memo && (
                     <>
                       <Separator />
@@ -180,19 +205,65 @@ export function ProjectDashboardPane({
   );
 }
 
+function SmallTaskList({
+  tasks,
+  projectTasks,
+  members,
+  selectedDetail,
+  onToggleTaskDone,
+  onOpenDetail,
+}: {
+  tasks: Task[];
+  projectTasks: Task[];
+  members: Member[];
+  selectedDetail: SelectedDetail;
+  onToggleTaskDone: (taskId: string) => void;
+  onOpenDetail: (next: SelectedDetail, scrollAnchor?: string) => void;
+}) {
+  return (
+    <>
+      {tasks.map((task, index) => {
+        const selected =
+          selectedDetail?.type === "task" && selectedDetail.taskId === task.id;
+        return (
+          <div key={task.id}>
+            {index > 0 && <Separator className="my-1" />}
+            <SmallTaskRow
+              task={task}
+              projectTasks={projectTasks}
+              members={members}
+              selected={selected}
+              onToggleDone={() => onToggleTaskDone(task.id)}
+              onOpen={() =>
+                onOpenDetail(
+                  { type: "task", taskId: task.id },
+                  PANE4_SECTION_IDS.detail.info,
+                )
+              }
+            />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function SmallTaskRow({
   task,
+  projectTasks,
   members,
   selected,
   onToggleDone,
   onOpen,
 }: {
   task: Task;
+  projectTasks: Task[];
   members: Member[];
   selected: boolean;
   onToggleDone: () => void;
   onOpen: () => void;
 }) {
+  const progress = getTaskProgressSummaryForTask(projectTasks, task);
   const assigneeName =
     members.find((member) => member.id === task.assigneeId)?.name ??
     "未アサイン";
@@ -228,9 +299,43 @@ function SmallTaskRow({
           {assigneeName}
           {task.dueDate && ` / ${task.dueDate}`}
         </span>
+        <TaskProgressBar title={task.title} summary={progress} />
       </button>
       <JumpIcon selected={selected} />
     </div>
+  );
+}
+
+function CompletedTaskSection({
+  count,
+  children,
+}: {
+  count: number;
+  children: ReactNode;
+}) {
+  if (count === 0) return null;
+
+  return (
+    <Collapsible defaultOpen={false}>
+      <div className="flex flex-col gap-1">
+        <CollapsibleTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full justify-between"
+            >
+              <span>完了済み {count}</span>
+              <ChevronDown className="transition-transform in-data-[panel-open]:rotate-180" />
+            </Button>
+          }
+        />
+        <CollapsibleContent>
+          <div className="flex flex-col gap-1">{children}</div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
   );
 }
 

@@ -10,10 +10,11 @@ import type { DayButtonProps } from "react-day-picker";
 import { cn, formatISODate, parseISODate } from "@/lib/utils";
 import { type Member, type Project, type Task } from "@/lib/schema";
 import {
+  getTaskCompletionGroups,
   getLargeTasks,
   getMediumTasks,
-  getSmallTaskCounts,
   getTaskCalendarDays,
+  getTaskProgressSummaryForTask,
   type TaskCalendarDay,
 } from "@/lib/computed/projects";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AddItemDialog } from "@/components/workspace/AddItemDialog";
+import { TaskProgressBar } from "@/components/workspace/TaskProgressBar";
 
 type ProjectListPaneProps = {
   project: Project | null;
@@ -51,6 +53,9 @@ export function ProjectListPane({
   );
 
   const largeTasks = project ? getLargeTasks(project.tasks) : [];
+  const largeTaskGroups = project
+    ? getTaskCompletionGroups(project.tasks, largeTasks)
+    : { openTasks: [], completedTasks: [] };
   const addMediumParent =
     project?.tasks.find((task) => task.id === addMediumParentId) ?? null;
 
@@ -77,75 +82,31 @@ export function ProjectListPane({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-2 px-3 py-4">
-          {largeTasks.map((task) => {
-            const mediumTasks = getMediumTasks(project?.tasks ?? [], task.id);
-            const open =
-              selectedTaskId === task.id ||
-              mediumTasks.some((mediumTask) => mediumTask.id === selectedTaskId);
+          {largeTaskGroups.openTasks.map((task) => (
+            <LargeTaskItem
+              key={task.id}
+              task={task}
+              project={project}
+              members={members}
+              selectedTaskId={selectedTaskId}
+              onSelectTask={onSelectTask}
+              onAddMediumTask={setAddMediumParentId}
+            />
+          ))}
 
-            return (
-              <Collapsible key={task.id} defaultOpen={open}>
-                <div className="flex flex-col gap-1">
-                  <TaskRow
-                    task={task}
-                    project={project}
-                    members={members}
-                    selected={selectedTaskId === task.id}
-                    onSelect={() => onSelectTask(task.id)}
-                    action={
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setAddMediumParentId(task.id);
-                        }}
-                        aria-label={`${task.title} に中項目タスクを追加`}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <Plus />
-                      </Button>
-                    }
-                    trigger={
-                      mediumTasks.length > 0 ? (
-                        <CollapsibleTrigger
-                          render={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-xs"
-                              aria-label={`${task.title} の中項目を開閉`}
-                              className="text-muted-foreground hover:text-foreground"
-                            >
-                              <ChevronDown className="transition-transform in-data-[panel-open]:rotate-180" />
-                            </Button>
-                          }
-                        />
-                      ) : null
-                    }
-                  />
-
-                  {mediumTasks.length > 0 && (
-                    <CollapsibleContent>
-                      <div className="flex flex-col gap-1 pl-5">
-                        {mediumTasks.map((mediumTask) => (
-                          <TaskRow
-                            key={mediumTask.id}
-                            task={mediumTask}
-                            project={project}
-                            members={members}
-                            selected={selectedTaskId === mediumTask.id}
-                            onSelect={() => onSelectTask(mediumTask.id)}
-                          />
-                        ))}
-                      </div>
-                    </CollapsibleContent>
-                  )}
-                </div>
-              </Collapsible>
-            );
-          })}
+          <CompletedTaskSection count={largeTaskGroups.completedTasks.length}>
+            {largeTaskGroups.completedTasks.map((task) => (
+              <LargeTaskItem
+                key={task.id}
+                task={task}
+                project={project}
+                members={members}
+                selectedTaskId={selectedTaskId}
+                onSelectTask={onSelectTask}
+                onAddMediumTask={setAddMediumParentId}
+              />
+            ))}
+          </CompletedTaskSection>
 
           {project && largeTasks.length === 0 && (
             <p className="px-2 py-6 text-center text-sm text-muted-foreground">
@@ -200,6 +161,108 @@ const TASK_LEVEL_LABEL: Record<Task["level"], string> = {
   medium: "中項目",
   small: "小項目",
 };
+
+function LargeTaskItem({
+  task,
+  project,
+  members,
+  selectedTaskId,
+  onSelectTask,
+  onAddMediumTask,
+}: {
+  task: Task;
+  project: Project | null;
+  members: Member[];
+  selectedTaskId: string | null;
+  onSelectTask: (taskId: string) => void;
+  onAddMediumTask: (taskId: string) => void;
+}) {
+  const mediumTasks = getMediumTasks(project?.tasks ?? [], task.id);
+  const mediumTaskGroups = project
+    ? getTaskCompletionGroups(project.tasks, mediumTasks)
+    : { openTasks: [], completedTasks: [] };
+  const open =
+    selectedTaskId === task.id ||
+    mediumTasks.some((mediumTask) => mediumTask.id === selectedTaskId);
+
+  return (
+    <Collapsible defaultOpen={open}>
+      <div className="flex flex-col gap-1">
+        <TaskRow
+          task={task}
+          project={project}
+          members={members}
+          selected={selectedTaskId === task.id}
+          onSelect={() => onSelectTask(task.id)}
+          action={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={(event) => {
+                event.stopPropagation();
+                onAddMediumTask(task.id);
+              }}
+              aria-label={`${task.title} に中項目タスクを追加`}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Plus />
+            </Button>
+          }
+          trigger={
+            mediumTasks.length > 0 ? (
+              <CollapsibleTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`${task.title} の中項目を開閉`}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronDown className="transition-transform in-data-[panel-open]:rotate-180" />
+                  </Button>
+                }
+              />
+            ) : null
+          }
+        />
+
+        {mediumTasks.length > 0 && (
+          <CollapsibleContent>
+            <div className="flex flex-col gap-1 pl-5">
+              {mediumTaskGroups.openTasks.map((mediumTask) => (
+                <TaskRow
+                  key={mediumTask.id}
+                  task={mediumTask}
+                  project={project}
+                  members={members}
+                  selected={selectedTaskId === mediumTask.id}
+                  onSelect={() => onSelectTask(mediumTask.id)}
+                />
+              ))}
+
+              <CompletedTaskSection
+                count={mediumTaskGroups.completedTasks.length}
+              >
+                {mediumTaskGroups.completedTasks.map((mediumTask) => (
+                  <TaskRow
+                    key={mediumTask.id}
+                    task={mediumTask}
+                    project={project}
+                    members={members}
+                    selected={selectedTaskId === mediumTask.id}
+                    onSelect={() => onSelectTask(mediumTask.id)}
+                  />
+                ))}
+              </CompletedTaskSection>
+            </div>
+          </CollapsibleContent>
+        )}
+      </div>
+    </Collapsible>
+  );
+}
 
 function TaskCalendarView({ project }: { project: Project | null }) {
   const [selectedDates, setSelectedDates] = useState<Record<string, string>>({});
@@ -409,9 +472,10 @@ function TaskRow({
   action?: ReactNode;
   trigger?: ReactNode;
 }) {
-  const counts = project
-    ? getSmallTaskCounts(project.tasks, task.id)
-    : { done: 0, total: 0 };
+  const progress = project
+    ? getTaskProgressSummaryForTask(project.tasks, task)
+    : { done: 0, total: 0, percent: 0 };
+  const completed = progress.total > 0 && progress.done === progress.total;
   const assigneeName =
     members.find((member) => member.id === task.assigneeId)?.name ??
     "未アサイン";
@@ -437,7 +501,7 @@ function TaskRow({
         <span
           className={cn(
             "min-w-0 flex-1 truncate text-sm font-medium",
-            task.done && "text-muted-foreground line-through",
+            completed && "text-muted-foreground line-through",
           )}
         >
           {task.title}
@@ -446,7 +510,7 @@ function TaskRow({
       </span>
       <span className="flex min-w-0 items-center gap-1.5">
         <Badge variant="secondary" size="xs">
-          {counts.done}/{counts.total}
+          {progress.done}/{progress.total}
         </Badge>
         {task.dueDate && (
           <Badge variant="outline" size="xs">
@@ -457,6 +521,40 @@ function TaskRow({
           {assigneeName}
         </span>
       </span>
+      <TaskProgressBar title={task.title} summary={progress} />
     </div>
+  );
+}
+
+function CompletedTaskSection({
+  count,
+  children,
+}: {
+  count: number;
+  children: ReactNode;
+}) {
+  if (count === 0) return null;
+
+  return (
+    <Collapsible defaultOpen={false}>
+      <div className="flex flex-col gap-1">
+        <CollapsibleTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full justify-between"
+            >
+              <span>完了済み {count}</span>
+              <ChevronDown className="transition-transform in-data-[panel-open]:rotate-180" />
+            </Button>
+          }
+        />
+        <CollapsibleContent>
+          <div className="flex flex-col gap-1">{children}</div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
   );
 }

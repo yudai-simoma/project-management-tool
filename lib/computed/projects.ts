@@ -35,6 +35,17 @@ export type TaskCalendarDay = {
   doneTasks: Task[];
 };
 
+export type TaskProgressSummary = {
+  done: number;
+  total: number;
+  percent: number;
+};
+
+export type TaskCompletionGroups = {
+  openTasks: Task[];
+  completedTasks: Task[];
+};
+
 /**
  * プロジェクトの進捗率（0〜100）。タスクの完了比率から自動計算する。
  * タスクが 0 件のプロジェクトは 0% とする（手動入力は行わない）。
@@ -136,9 +147,54 @@ export function getTaskProgress(
   tasks: Task[],
   parentTaskId: string | null,
 ): number {
+  return getTaskProgressSummary(tasks, parentTaskId).percent;
+}
+
+export function getTaskProgressSummary(
+  tasks: Task[],
+  parentTaskId: string | null,
+): TaskProgressSummary {
   const { done, total } = getSmallTaskCounts(tasks, parentTaskId);
-  if (total === 0) return 0;
-  return Math.round((done / total) * 100);
+  return {
+    done,
+    total,
+    percent: total === 0 ? 0 : Math.round((done / total) * 100),
+  };
+}
+
+export function getTaskProgressSummaryForTask(
+  tasks: Task[],
+  task: Task,
+): TaskProgressSummary {
+  if (task.level === "small") {
+    return {
+      done: task.done ? 1 : 0,
+      total: 1,
+      percent: task.done ? 100 : 0,
+    };
+  }
+
+  return getTaskProgressSummary(tasks, task.id);
+}
+
+export function getTaskCompletionGroups(
+  allTasks: Task[],
+  tasks: Task[],
+): TaskCompletionGroups {
+  const groups: TaskCompletionGroups = {
+    openTasks: [],
+    completedTasks: [],
+  };
+
+  for (const task of tasks) {
+    if (isTaskComplete(allTasks, task)) {
+      groups.completedTasks.push(task);
+    } else {
+      groups.openTasks.push(task);
+    }
+  }
+
+  return groups;
 }
 
 export function getTaskCalendarDays(tasks: Task[]): TaskCalendarDay[] {
@@ -171,6 +227,13 @@ export function getTaskCalendarDays(tasks: Task[]): TaskCalendarDay[] {
   return [...days.values()].sort((a, b) =>
     compareAsc(a.dateValue, b.dateValue),
   );
+}
+
+function isTaskComplete(tasks: Task[], task: Task): boolean {
+  if (task.level === "small") return task.done;
+
+  const { done, total } = getSmallTaskCounts(tasks, task.id);
+  return total > 0 && done === total;
 }
 
 function isDescendantOf(
