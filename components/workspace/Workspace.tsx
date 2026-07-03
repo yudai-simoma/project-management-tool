@@ -27,7 +27,13 @@
  * state/handler 対応表）。
  */
 
-import { useState, useCallback, useMemo } from "react";
+import {
+  useState,
+  useCallback,
+  useMemo,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { useOrganization, useUser } from "@clerk/nextjs";
 
 import { toRole } from "@/lib/auth/roles";
@@ -49,7 +55,12 @@ import {
   getProjectProgress,
   deriveDeadlineRisk,
 } from "@/lib/computed/projects";
-import { STATUS_LABELS } from "@/lib/labels";
+import { AI_CHAT_GREETING, STATUS_LABELS } from "@/lib/labels";
+import {
+  GEMINI_FLASH_LATEST_CONTEXT_TOKENS,
+  GEMINI_FLASH_LATEST_MODEL_ID,
+} from "@/lib/ai/model-config";
+import type { AiChatUsage } from "@/lib/api/ai-client";
 import { runOptimistic, removeById, insertAt } from "@/lib/optimistic";
 import {
   createCategoryApi,
@@ -68,12 +79,22 @@ import { GlobalHeader } from "@/components/workspace/GlobalHeader";
 import { CategoryPane } from "@/components/workspace/CategoryPane";
 import { ProjectListPane } from "@/components/workspace/ProjectListPane";
 import { ProjectDashboardPane } from "@/components/workspace/ProjectDashboardPane";
-import { ProjectDetailPane } from "@/components/workspace/ProjectDetailPane";
+import {
+  ProjectDetailPane,
+  type ProjectAiChatMessage,
+  type ProjectAiChatModel,
+} from "@/components/workspace/ProjectDetailPane";
 import { PortfolioDashboardPane } from "@/components/workspace/PortfolioDashboardPane";
 
 // `onUpdateTaskField` の field 引数で使う key の union 型。
 // ProjectDetailPane.tsx 内部の同形の型と同期させる規律（export はしない）。
 type EditableTaskKey = "title" | "dueDate" | "assigneeId" | "memo";
+
+type ProjectAiChatState = {
+  messages: ProjectAiChatMessage[];
+  tokenUsageTotal: number;
+  model: ProjectAiChatModel;
+};
 
 type WorkspaceProps = {
   initialCategories: Category[];
@@ -81,6 +102,30 @@ type WorkspaceProps = {
   initialProjects: Project[];
   workspace: { name: string; icon: string };
 };
+
+function createInitialAiChatState(): ProjectAiChatState {
+  return {
+    messages: [
+      {
+        id: "greeting",
+        role: "assistant",
+        kind: "text",
+        content: AI_CHAT_GREETING,
+      },
+    ],
+    tokenUsageTotal: 0,
+    model: {
+      id: GEMINI_FLASH_LATEST_MODEL_ID,
+      maxContextTokens: GEMINI_FLASH_LATEST_CONTEXT_TOKENS,
+    },
+  };
+}
+
+function getUsageTotalTokens(usage: AiChatUsage | null): number {
+  if (!usage) return 0;
+  if (typeof usage.totalTokens === "number") return usage.totalTokens;
+  return (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+}
 
 export function Workspace({
   initialCategories,
@@ -108,6 +153,11 @@ export function Workspace({
   const [overviewOpen, setOverviewOpen] = useState(true);
   // GlobalHeader のビュー切替（通常のワークスペース／全体ダッシュボード）。
   const [mainView, setMainView] = useState<MainView>("workspace");
+  // Pane 4 AIチャット履歴はプロジェクト単位で保持する。MVPではブラウザセッション内の
+  // React state に留め、リロードをまたぐ永続化は別ステップに切り出す。
+  const [projectAiChats, setProjectAiChats] = useState<
+    Record<string, ProjectAiChatState>
+  >({});
 
   // ロールに基づく操作制限（§6決定）。プロジェクト削除・カテゴリ削除は Owner/Admin のみ、
   // タスク削除は担当者本人 または Owner/Admin に許可する（`lib/auth/permissions.ts` 参照）。
@@ -124,6 +174,54 @@ export function Workspace({
   const activeProjectCategoryName = activeProject
     ? (categories.find((c) => c.id === activeProject.categoryId)?.name ?? "")
     : "";
+
+  const activeProjectAiChat = useMemo(
+    () => projectAiChats[selectedProjectId] ?? createInitialAiChatState(),
+    [projectAiChats, selectedProjectId],
+  );
+
+  const updateActiveProjectAiChat = useCallback(
+    (updater: (current: ProjectAiChatState) => ProjectAiChatState) => {
+      setProjectAiChats((prev) => {
+        const current = prev[selectedProjectId] ?? createInitialAiChatState();
+        return { ...prev, [selectedProjectId]: updater(current) };
+      });
+    },
+    [selectedProjectId],
+  );
+
+  const updateActiveProjectAiMessages: Dispatch<
+    SetStateAction<ProjectAiChatMessage[]>
+  > = useCallback(
+    (updater) => {
+      updateActiveProjectAiChat((current) => ({
+        ...current,
+        messages:
+          typeof updater === "function" ? updater(current.messages) : updater,
+      }));
+    },
+    [updateActiveProjectAiChat],
+  );
+
+  const registerAiUsage = useCallback(
+    (usage: AiChatUsage | null, model: ProjectAiChatModel) => {
+      const totalTokens = getUsageTotalTokens(usage);
+      updateActiveProjectAiChat((current) => ({
+        ...current,
+        tokenUsageTotal: current.tokenUsageTotal + totalTokens,
+        model,
+      }));
+    },
+    [updateActiveProjectAiChat],
+  );
+
+  const clearActiveProjectAiChat = useCallback(() => {
+    updateActiveProjectAiChat((current) => ({
+      ...current,
+      messages: [],
+      tokenUsageTotal: 0,
+    }));
+  }, [updateActiveProjectAiChat]);
 
   // ===== Pane 1: カテゴリ選択（実フィルタ） =====
 
@@ -472,8 +570,7 @@ export function Workspace({
     [selectedProjectId],
   );
 
-  // Pane 3「+ タスク追加」、および Pane 4 AIアシスタントタブの両方から呼ばれる。
-  // `extra` はAIアシスタントのタスク追加ツール（期限・担当者・メモを一度に指定できる）向け。
+  // Pane 3「+ タスク追加」、および Pane 4 AIアシスタントタブの提案確定から呼ばれる。
   // 単発追加（Pane3の「+」等）は従来通りタイトルのみで呼び出せる。
   const addTask = useCallback(
     (
@@ -718,9 +815,15 @@ export function Workspace({
                     project={activeProject}
                     categoryName={activeProjectCategoryName}
                     members={members}
+                    aiMessages={activeProjectAiChat.messages}
+                    aiTokenUsageTotal={activeProjectAiChat.tokenUsageTotal}
+                    aiModel={activeProjectAiChat.model}
                     selectedDetail={selectedDetail}
                     scrollAnchor={scrollAnchor}
                     onScrollAnchorConsumed={consumeScrollAnchor}
+                    onAiMessagesChange={updateActiveProjectAiMessages}
+                    onAiUsageReceived={registerAiUsage}
+                    onClearAiChat={clearActiveProjectAiChat}
                     onUpdateTaskField={updateTaskField}
                     onToggleTaskDone={toggleTaskDone}
                     onDeleteTask={deleteTask}

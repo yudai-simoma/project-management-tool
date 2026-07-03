@@ -5,6 +5,7 @@
 
 import { apiFetch } from "@/lib/api/http";
 import type { AiAction } from "@/lib/ai/tools";
+import type { GeminiModelConfig } from "@/lib/ai/model-config";
 import type { Member, Project } from "@/lib/schema";
 
 // ===== APIキー設定（BYOK） =====
@@ -13,7 +14,9 @@ export function fetchApiKeyStatus(): Promise<{ configured: boolean }> {
   return apiFetch("/api/ai/api-key");
 }
 
-export function saveApiKeyApi(apiKey: string): Promise<{ configured: boolean }> {
+export function saveApiKeyApi(
+  apiKey: string,
+): Promise<{ configured: boolean }> {
   return apiFetch("/api/ai/api-key", {
     method: "PUT",
     body: JSON.stringify({ apiKey }),
@@ -47,10 +50,18 @@ export type AiChatReply =
   | { kind: "text"; content: string }
   | { kind: "taskProposal"; intro: string; titles: string[] };
 
+export type AiChatUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+};
+
 export type AiChatResponse = {
   source: "gemini" | "fallback";
   reply: AiChatReply;
   actions: AiAction[];
+  usage: AiChatUsage | null;
+  model: GeminiModelConfig;
 };
 
 export function sendAiChatMessage(input: {

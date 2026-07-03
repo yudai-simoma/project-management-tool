@@ -4,7 +4,7 @@
  * 設計方針: ここの `execute` はDBやAPIを直接更新しない。あくまで「実行してほしい
  * 操作」を表す `AiAction` を返すだけの純粋関数にする。実際の永続化は、
  * クライアント側（`AiAssistantPanel`）が結果の `actions` を受け取り、
- * `Workspace.tsx` が既に持つ楽観的更新ハンドラ（`onAddTask`/`onUpdateTaskField`/
+ * `Workspace.tsx` が既に持つ楽観的更新ハンドラ（`onUpdateTaskField`/
  * `onToggleTaskDone`）にそのまま委譲する。理由:
  *   - 永続化の経路（楽観的更新 → `app/api/**` Route Handler）を1本化でき、
  *     チャット経由の変更だけDBアクセス方法が別ルートになる事態を避けられる
@@ -16,14 +16,6 @@ import { tool } from "ai";
 import { z } from "zod";
 
 import type { Member, Task } from "@/lib/schema";
-
-export type AiAddTaskAction = {
-  type: "addTask";
-  title: string;
-  dueDate: string;
-  assigneeId: string;
-  memo: string;
-};
 
 export type AiUpdateTaskAction = {
   type: "updateTask";
@@ -44,10 +36,7 @@ export type AiProposeTasksAction = {
 };
 
 export type AiAction =
-  | AiAddTaskAction
-  | AiUpdateTaskAction
-  | AiCompleteTaskAction
-  | AiProposeTasksAction;
+  AiUpdateTaskAction | AiCompleteTaskAction | AiProposeTasksAction;
 
 type AiToolOutput = AiAction | { type: "error"; message: string };
 
@@ -69,32 +58,6 @@ export function buildAiTools({
   members: Member[];
 }) {
   return {
-    addTask: tool({
-      description: "新しいタスクを1件、プロジェクトに追加する。",
-      inputSchema: z.object({
-        title: z.string().min(1).describe("タスクのタイトル"),
-        dueDate: z
-          .string()
-          .optional()
-          .describe("期限（YYYY-MM-DD形式。不明なら省略）"),
-        assigneeId: z
-          .string()
-          .optional()
-          .describe("担当者のメンバーid（不明なら省略）"),
-        memo: z.string().optional().describe("メモ（不明なら省略）"),
-      }),
-      execute: async ({ title, dueDate, assigneeId, memo }) => {
-        const output: AiToolOutput = {
-          type: "addTask",
-          title,
-          dueDate: dueDate ?? "",
-          assigneeId: resolveAssigneeId(assigneeId, members),
-          memo: memo ?? "",
-        };
-        return output;
-      },
-    }),
-
     updateTask: tool({
       description:
         "既存タスクのタイトル・期限・担当者・メモを更新する（削除はできない）。",
@@ -157,9 +120,9 @@ export function buildAiTools({
 
     proposeTasks: tool({
       description:
-        "「〇〇のタスクを洗い出して」等、複数タスクの一括提案を求められたときに使う。" +
+        "新しいタスクを作りたい・追加したい・洗い出したい等、タスク候補の提示を求められたときに必ず使う。" +
         "この時点ではまだ追加しない（ユーザーがチェックボックスで選んで確定するまで待つ）。" +
-        "単発の「〇〇を追加して」には使わず、addTaskを使うこと。",
+        "1件だけの追加依頼でも、即時追加せず1件の候補として提示する。",
       inputSchema: z.object({
         intro: z
           .string()
@@ -168,9 +131,9 @@ export function buildAiTools({
           ),
         titles: z
           .array(z.string().min(1))
-          .min(3)
+          .min(1)
           .max(8)
-          .describe("提案するタスクタイトルの配列（3〜8件）"),
+          .describe("提案するタスクタイトルの配列（1〜8件）"),
       }),
       execute: async ({ intro, titles }) => {
         const output: AiToolOutput = { type: "proposeTasks", intro, titles };

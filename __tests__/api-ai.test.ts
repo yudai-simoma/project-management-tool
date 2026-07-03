@@ -13,6 +13,10 @@ vi.mock("@/lib/ai/api-key", () => ({
 }));
 vi.mock("@/lib/ai/gemini", () => ({
   createGeminiModel: vi.fn(() => ({ modelId: "fake-model" })),
+  getGeminiModelConfig: vi.fn(() => ({
+    id: "gemini-flash-latest",
+    maxContextTokens: 1048576,
+  })),
 }));
 vi.mock("ai", () => ({
   generateText: vi.fn(),
@@ -90,7 +94,10 @@ describe("GET /api/ai/api-key", () => {
 describe("PUT /api/ai/api-key", () => {
   it("APIキーを保存する", async () => {
     const res = await PUT(jsonRequest({ apiKey: "AIza-xxx" }));
-    expect(apiKeyLib.setGeminiApiKey).toHaveBeenCalledWith("user_1", "AIza-xxx");
+    expect(apiKeyLib.setGeminiApiKey).toHaveBeenCalledWith(
+      "user_1",
+      "AIza-xxx",
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ configured: true });
   });
@@ -113,7 +120,9 @@ describe("DELETE /api/ai/api-key", () => {
 describe("POST /api/ai/summary", () => {
   it("APIキー未設定なら Gemini を呼ばずフォールバック文言を返す", async () => {
     asMock(apiKeyLib.getGeminiApiKey).mockResolvedValue(null);
-    const res = await POST_SUMMARY(jsonRequest({ project, categoryName: "プロダクト開発" }));
+    const res = await POST_SUMMARY(
+      jsonRequest({ project, categoryName: "プロダクト開発" }),
+    );
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
@@ -127,17 +136,24 @@ describe("POST /api/ai/summary", () => {
     asMock(apiKeyLib.getGeminiApiKey).mockResolvedValue("AIza-xxx");
     asMock(generateText).mockResolvedValue({ text: "  順調です。  " } as never);
 
-    const res = await POST_SUMMARY(jsonRequest({ project, categoryName: "プロダクト開発" }));
+    const res = await POST_SUMMARY(
+      jsonRequest({ project, categoryName: "プロダクト開発" }),
+    );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ source: "gemini", summary: "順調です。" });
+    expect(await res.json()).toEqual({
+      source: "gemini",
+      summary: "順調です。",
+    });
   });
 
   it("Gemini呼び出しが失敗したら502を返す", async () => {
     asMock(apiKeyLib.getGeminiApiKey).mockResolvedValue("AIza-xxx");
     asMock(generateText).mockRejectedValue(new Error("boom"));
 
-    const res = await POST_SUMMARY(jsonRequest({ project, categoryName: "プロダクト開発" }));
+    const res = await POST_SUMMARY(
+      jsonRequest({ project, categoryName: "プロダクト開発" }),
+    );
     expect(res.status).toBe(502);
   });
 
@@ -163,8 +179,16 @@ describe("POST /api/ai/chat", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.source).toBe("fallback");
-    expect(body.reply).toEqual({ kind: "text", content: AI_NO_API_KEY_MESSAGE });
+    expect(body.reply).toEqual({
+      kind: "text",
+      content: AI_NO_API_KEY_MESSAGE,
+    });
     expect(body.actions).toEqual([]);
+    expect(body.usage).toBeNull();
+    expect(body.model).toEqual({
+      id: "gemini-flash-latest",
+      maxContextTokens: 1048576,
+    });
     expect(generateText).not.toHaveBeenCalled();
   });
 
@@ -178,6 +202,7 @@ describe("POST /api/ai/chat", () => {
           output: { type: "completeTask", taskId: "t-1", done: true },
         },
       ],
+      usage: { inputTokens: 20, outputTokens: 5, totalTokens: 25 },
     } as never);
 
     const res = await POST_CHAT(jsonRequest(chatBody));
@@ -191,6 +216,15 @@ describe("POST /api/ai/chat", () => {
     expect(body.actions).toEqual([
       { type: "completeTask", taskId: "t-1", done: true },
     ]);
+    expect(body.usage).toEqual({
+      inputTokens: 20,
+      outputTokens: 5,
+      totalTokens: 25,
+    });
+    expect(body.model).toEqual({
+      id: "gemini-flash-latest",
+      maxContextTokens: 1048576,
+    });
   });
 
   it("proposeTasksの結果はtaskProposal形式で返し、actionsには含めない", async () => {

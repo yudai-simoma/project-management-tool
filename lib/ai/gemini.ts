@@ -8,11 +8,24 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
 
+import {
+  GEMINI_FLASH_LATEST_MODEL_ID,
+  getGeminiContextTokens,
+  type GeminiModelConfig,
+} from "@/lib/ai/model-config";
+
 /** 無料枠での利用を想定した既定モデル。`.env.local` の `GEMINI_MODEL_ID` で上書きできる。 */
-const DEFAULT_MODEL_ID = "gemini-flash-latest";
+const DEFAULT_MODEL_ID = GEMINI_FLASH_LATEST_MODEL_ID;
+
+export function getGeminiModelConfig(): GeminiModelConfig {
+  const modelId = process.env.GEMINI_MODEL_ID?.trim() || DEFAULT_MODEL_ID;
+  return {
+    id: modelId,
+    maxContextTokens: getGeminiContextTokens(modelId),
+  };
+}
 
 export function createGeminiModel(apiKey: string): LanguageModel {
   const google = createGoogleGenerativeAI({ apiKey });
-  const modelId = process.env.GEMINI_MODEL_ID?.trim() || DEFAULT_MODEL_ID;
-  return google(modelId);
+  return google(getGeminiModelConfig().id);
 }

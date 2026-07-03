@@ -31,28 +31,9 @@ const tasks: Task[] = [
 const executionOptions = {} as never;
 
 describe("buildAiTools", () => {
-  it("addTask: 担当者名で指定してもidに解決する", async () => {
+  it("addTask toolを公開しない", () => {
     const tools = buildAiTools({ tasks, members });
-    const output = await tools.addTask.execute(
-      { title: "新規タスク", assigneeId: "鈴木 花子" },
-      executionOptions,
-    );
-    expect(output).toEqual({
-      type: "addTask",
-      title: "新規タスク",
-      dueDate: "",
-      assigneeId: "m-2",
-      memo: "",
-    });
-  });
-
-  it("addTask: 未知の担当者指定は空文字（未アサイン）に解決する", async () => {
-    const tools = buildAiTools({ tasks, members });
-    const output = await tools.addTask.execute(
-      { title: "新規タスク", assigneeId: "存在しない人" },
-      executionOptions,
-    );
-    expect(output).toMatchObject({ assigneeId: "" });
+    expect(tools).not.toHaveProperty("addTask");
   });
 
   it("updateTask: 指定フィールドのみpatchに含める", async () => {
@@ -105,6 +86,19 @@ describe("buildAiTools", () => {
       type: "proposeTasks",
       intro: "5件提案します",
       titles: ["a", "b", "c"],
+    });
+  });
+
+  it("proposeTasks: 1件だけのタスク候補も返せる", async () => {
+    const tools = buildAiTools({ tasks, members });
+    const output = await tools.proposeTasks.execute(
+      { intro: "1件提案します", titles: ["新規タスク"] },
+      executionOptions,
+    );
+    expect(output).toEqual({
+      type: "proposeTasks",
+      intro: "1件提案します",
+      titles: ["新規タスク"],
     });
   });
 });

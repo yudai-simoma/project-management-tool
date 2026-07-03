@@ -3,7 +3,7 @@ import { generateText, stepCountIs } from "ai";
 import { NextResponse } from "next/server";
 
 import { getGeminiApiKey } from "@/lib/ai/api-key";
-import { createGeminiModel } from "@/lib/ai/gemini";
+import { createGeminiModel, getGeminiModelConfig } from "@/lib/ai/gemini";
 import { buildChatSystemPrompt } from "@/lib/ai/prompts";
 import { buildAiTools, type AiAction } from "@/lib/ai/tools";
 import { requireOrgId } from "@/lib/api/auth";
@@ -24,11 +24,14 @@ export async function POST(request: Request) {
 
   const { userId } = await auth();
   const apiKey = await getGeminiApiKey(userId!);
+  const model = getGeminiModelConfig();
   if (!apiKey) {
     return NextResponse.json({
       source: "fallback",
       reply: { kind: "text", content: AI_NO_API_KEY_MESSAGE },
       actions: [],
+      usage: null,
+      model,
     });
   }
 
@@ -54,13 +57,22 @@ export async function POST(request: Request) {
 
     const proposal = actions.find((a) => a.type === "proposeTasks");
     const reply = proposal
-      ? { kind: "taskProposal" as const, intro: proposal.intro, titles: proposal.titles }
-      : { kind: "text" as const, content: result.text.trim() || "(応答がありませんでした)" };
+      ? {
+          kind: "taskProposal" as const,
+          intro: proposal.intro,
+          titles: proposal.titles,
+        }
+      : {
+          kind: "text" as const,
+          content: result.text.trim() || "(応答がありませんでした)",
+        };
 
     return NextResponse.json({
       source: "gemini",
       reply,
       actions: actions.filter((a) => a.type !== "proposeTasks"),
+      usage: result.usage ?? null,
+      model,
     });
   } catch (error) {
     console.error("[api/ai/chat]", error);

@@ -16,7 +16,7 @@
  * セクション5 の設計方針に基づく実装。
  */
 
-import { useEffect, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import { Send, Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -33,18 +33,18 @@ import {
 } from "@/lib/schema";
 import {
   PANE4_SECTION_IDS,
-  AI_CHAT_GREETING,
   AI_CHAT_ERROR_MESSAGE,
   TASK_DELETE_ROLE_TOOLTIP,
 } from "@/lib/labels";
 import { canDeleteTask as checkCanDeleteTask } from "@/lib/auth/permissions";
-import { sendAiChatMessage } from "@/lib/api/ai-client";
+import { sendAiChatMessage, type AiChatUsage } from "@/lib/api/ai-client";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
@@ -77,7 +77,7 @@ type EditableTaskKey = "title" | "dueDate" | "assigneeId" | "memo";
  */
 type TaskProposal = { id: string; title: string; checked: boolean };
 
-type ChatMessage =
+export type ProjectAiChatMessage =
   | { id: string; role: "user" | "assistant"; kind: "text"; content: string }
   | {
       id: string;
@@ -87,6 +87,11 @@ type ChatMessage =
       proposals: TaskProposal[];
       confirmed: boolean;
     };
+
+export type ProjectAiChatModel = {
+  id: string;
+  maxContextTokens: number;
+};
 
 // ===== 担当者フィールド用ラベル =====
 // 担当者は組織メンバー一覧（`Member[]`）から選択する（自由テキストにしない）。
@@ -207,12 +212,12 @@ function TaskDetailContent({
   );
 }
 
-// ===== 「AIアシスタント」タブ: 壁打ちチャット（ダミー応答） =====
+// ===== 「AIアシスタント」タブ: 壁打ちチャット（Gemini + tool calling） =====
 
 function ChatBubble({
   message,
 }: {
-  message: Extract<ChatMessage, { kind: "text" }>;
+  message: Extract<ProjectAiChatMessage, { kind: "text" }>;
 }) {
   const isUser = message.role === "user";
   return (
@@ -241,7 +246,7 @@ function TaskProposalBubble({
   onToggleProposal,
   onConfirm,
 }: {
-  message: Extract<ChatMessage, { kind: "taskProposal" }>;
+  message: Extract<ProjectAiChatMessage, { kind: "taskProposal" }>;
   onToggleProposal: (proposalId: string) => void;
   onConfirm: () => void;
 }) {
@@ -304,6 +309,11 @@ function AiAssistantPanel({
   project,
   categoryName,
   members,
+  messages,
+  onMessagesChange,
+  tokenUsageTotal,
+  model,
+  onUsageReceived,
   onAddTask,
   onUpdateTaskField,
   onToggleTaskDone,
@@ -311,6 +321,14 @@ function AiAssistantPanel({
   project: Project;
   categoryName: string;
   members: Member[];
+  messages: ProjectAiChatMessage[];
+  onMessagesChange: Dispatch<SetStateAction<ProjectAiChatMessage[]>>;
+  tokenUsageTotal: number;
+  model: ProjectAiChatModel;
+  onUsageReceived: (
+    usage: AiChatUsage | null,
+    model: ProjectAiChatModel,
+  ) => void;
   onAddTask: (
     title: string,
     extra?: Partial<Pick<Task, "dueDate" | "assigneeId" | "memo">>,
@@ -322,22 +340,22 @@ function AiAssistantPanel({
   ) => void;
   onToggleTaskDone: (taskId: string) => void;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    {
-      id: "greeting",
-      role: "assistant",
-      kind: "text",
-      content: AI_CHAT_GREETING,
-    },
-  ]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
+  const maxContextTokens = Math.max(1, model.maxContextTokens);
+  const tokenPercent = Math.min(
+    100,
+    (tokenUsageTotal / maxContextTokens) * 100,
+  );
+  const formattedTokenUsage = tokenUsageTotal.toLocaleString("ja-JP");
+  const formattedMaxContext = maxContextTokens.toLocaleString("ja-JP");
+  const formattedTokenPercent = tokenPercent.toFixed(tokenPercent < 1 ? 2 : 1);
 
   const handleSend = async () => {
     const text = input.trim();
     if (!text || pending) return;
 
-    const userMessage: ChatMessage = {
+    const userMessage: ProjectAiChatMessage = {
       id: `u-${crypto.randomUUID()}`,
       role: "user",
       kind: "text",
@@ -347,7 +365,7 @@ function AiAssistantPanel({
       role: m.role,
       content: m.kind === "text" ? m.content : `(タスク提案: ${m.intro})`,
     }));
-    setMessages((prev) => [...prev, userMessage]);
+    onMessagesChange((prev) => [...prev, userMessage]);
     setInput("");
     setPending(true);
 
@@ -360,7 +378,9 @@ function AiAssistantPanel({
         message: text,
       });
 
-      const replyMessage: ChatMessage =
+      onUsageReceived(res.usage, res.model);
+
+      const replyMessage: ProjectAiChatMessage =
         res.reply.kind === "taskProposal"
           ? {
               id: `a-${crypto.randomUUID()}`,
@@ -380,18 +400,12 @@ function AiAssistantPanel({
               kind: "text",
               content: res.reply.content,
             };
-      setMessages((prev) => [...prev, replyMessage]);
+      onMessagesChange((prev) => [...prev, replyMessage]);
 
       // 実行アクション（追加・編集・完了）は、既存の楽観的更新ハンドラにそのまま委譲する
       // （チャット経由の変更だけ別の永続化経路にしない、`lib/ai/tools.ts` 参照）。
       for (const action of res.actions) {
-        if (action.type === "addTask") {
-          onAddTask(action.title, {
-            dueDate: action.dueDate,
-            assigneeId: action.assigneeId,
-            memo: action.memo,
-          });
-        } else if (action.type === "updateTask") {
+        if (action.type === "updateTask") {
           for (const [field, value] of Object.entries(action.patch)) {
             if (value !== undefined) {
               onUpdateTaskField(action.taskId, field as EditableTaskKey, value);
@@ -406,7 +420,7 @@ function AiAssistantPanel({
       }
     } catch (error) {
       console.error("[ai] チャットの送信に失敗しました", error);
-      setMessages((prev) => [
+      onMessagesChange((prev) => [
         ...prev,
         {
           id: `a-${crypto.randomUUID()}`,
@@ -422,7 +436,7 @@ function AiAssistantPanel({
 
   // 提案メッセージ内のチェックボックス切替。
   const handleToggleProposal = (messageId: string, proposalId: string) => {
-    setMessages((prev) =>
+    onMessagesChange((prev) =>
       prev.map((m) =>
         m.id === messageId && m.kind === "taskProposal"
           ? {
@@ -447,7 +461,7 @@ function AiAssistantPanel({
       .map((p) => p.title);
     checkedTitles.forEach((title) => onAddTask(title));
 
-    const resultMessage: ChatMessage = {
+    const resultMessage: ProjectAiChatMessage = {
       // messageId は提案メッセージごとに一意なので、それ由来の固定文字列で
       // 一意性を確保する（confirm は1メッセージにつき1回しか実行されない）。
       id: `${messageId}-result`,
@@ -458,7 +472,7 @@ function AiAssistantPanel({
           ? `${checkedTitles.length}件のタスクを追加しました。`
           : "タスクは追加されませんでした。",
     };
-    setMessages((prev) => [
+    onMessagesChange((prev) => [
       ...prev.map((m) => (m.id === messageId ? { ...m, confirmed: true } : m)),
       resultMessage,
     ]);
@@ -491,27 +505,43 @@ function AiAssistantPanel({
           )}
         </div>
       </ScrollArea>
-      <div className="flex shrink-0 items-center gap-2 border-t border-border p-3">
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSend();
-          }}
-          placeholder="例:「タスクを洗い出して」"
-          aria-label="AIアシスタントへのメッセージ"
-          disabled={pending}
-          className="h-8 bg-card"
-        />
-        <Button
-          type="button"
-          size="icon-sm"
-          onClick={handleSend}
-          disabled={!input.trim() || pending}
-          aria-label="送信"
-        >
-          <Send />
-        </Button>
+      <div className="flex shrink-0 flex-col gap-2 border-t border-border p-3">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>コンテキスト</span>
+            <span className="ml-auto tabular-nums">
+              {formattedTokenUsage} / {formattedMaxContext} トークン (
+              {formattedTokenPercent}%)
+            </span>
+          </div>
+          <Progress value={tokenPercent} aria-label="AIコンテキスト使用率" />
+        </div>
+        <div className="flex items-end gap-2">
+          <Textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void handleSend();
+              }
+            }}
+            placeholder="例:「タスクを洗い出して」"
+            aria-label="AIアシスタントへのメッセージ"
+            disabled={pending}
+            rows={2}
+            className="max-h-32 min-h-16 resize-none bg-card"
+          />
+          <Button
+            type="button"
+            size="icon-sm"
+            onClick={() => void handleSend()}
+            disabled={!input.trim() || pending}
+            aria-label="送信"
+          >
+            <Send />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -524,9 +554,15 @@ export function ProjectDetailPane({
   project,
   categoryName,
   members,
+  aiMessages,
+  aiTokenUsageTotal,
+  aiModel,
   selectedDetail,
   scrollAnchor,
   onScrollAnchorConsumed,
+  onAiMessagesChange,
+  onAiUsageReceived,
+  onClearAiChat,
   onUpdateTaskField,
   onToggleTaskDone,
   onDeleteTask,
@@ -542,9 +578,18 @@ export function ProjectDetailPane({
   project: Project;
   categoryName: string;
   members: Member[];
+  aiMessages: ProjectAiChatMessage[];
+  aiTokenUsageTotal: number;
+  aiModel: ProjectAiChatModel;
   selectedDetail: SelectedDetail;
   scrollAnchor: string | null;
   onScrollAnchorConsumed: () => void;
+  onAiMessagesChange: Dispatch<SetStateAction<ProjectAiChatMessage[]>>;
+  onAiUsageReceived: (
+    usage: AiChatUsage | null,
+    model: ProjectAiChatModel,
+  ) => void;
+  onClearAiChat: () => void;
   onUpdateTaskField: (
     taskId: string,
     field: EditableTaskKey,
@@ -604,11 +649,20 @@ export function ProjectDetailPane({
               <TabsTrigger value="ai">AIアシスタント</TabsTrigger>
             </TabsList>
             <span className="sr-only">{heading}</span>
-            <Pane4Toggle
-              open={pane4Open}
-              onToggle={onTogglePane4}
-              className="ml-auto"
-            />
+            <div className="ml-auto flex items-center gap-1">
+              {pane4Tab === "ai" && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClearAiChat}
+                  disabled={aiMessages.length === 0 && aiTokenUsageTotal === 0}
+                >
+                  クリア
+                </Button>
+              )}
+              <Pane4Toggle open={pane4Open} onToggle={onTogglePane4} />
+            </div>
           </header>
 
           <TabsContent value="detail" className="min-h-0 flex-1">
@@ -639,10 +693,14 @@ export function ProjectDetailPane({
 
           <TabsContent value="ai" className="min-h-0 flex-1">
             <AiAssistantPanel
-              key={selectedProjectId}
               project={project}
               categoryName={categoryName}
               members={members}
+              messages={aiMessages}
+              onMessagesChange={onAiMessagesChange}
+              tokenUsageTotal={aiTokenUsageTotal}
+              model={aiModel}
+              onUsageReceived={onAiUsageReceived}
               onAddTask={onAddTask}
               onUpdateTaskField={onUpdateTaskField}
               onToggleTaskDone={onToggleTaskDone}
