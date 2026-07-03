@@ -15,6 +15,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx db/seed.ts",
+    "migrate:task-hierarchy": "tsx scripts/migrate-task-hierarchy.ts",
     "approve-existing-users": "tsx scripts/approve-existing-users.ts"
   },
   "dependencies": {

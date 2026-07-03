@@ -8,7 +8,13 @@
 
 import { z } from "zod";
 
-import { memberSchema, projectSchema, projectStatusKeySchema, roleSchema } from "@/lib/schema";
+import {
+  memberSchema,
+  projectSchema,
+  projectStatusKeySchema,
+  roleSchema,
+  taskLevelSchema,
+} from "@/lib/schema";
 
 // ===== カテゴリ =====
 
@@ -70,6 +76,8 @@ export const reorderProjectsSchema = z.object({
 export const createTaskSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
+  parentTaskId: z.string().min(1).nullable().optional().default(null),
+  level: taskLevelSchema.optional().default("small"),
   done: z.boolean().optional().default(false),
   dueDate: z.string().optional().default(""),
   assigneeId: z.string().optional().default(""),
@@ -79,6 +87,8 @@ export const createTaskSchema = z.object({
 export const updateTaskSchema = z
   .object({
     title: z.string().min(1).optional(),
+    parentTaskId: z.string().min(1).nullable().optional(),
+    level: taskLevelSchema.optional(),
     done: z.boolean().optional(),
     dueDate: z.string().optional(),
     assigneeId: z.string().optional(),

@@ -1,10 +1,10 @@
 /**
  * Drizzle テーブル定義（Neon / Postgres 向け）。
  *
- * `lib/schema.ts` の zod スキーマ（Category/Project/Task）に対応するテーブルを
- * 定義する。カラム名・型は zod スキーマのフィールドにできるだけ一対一で対応させ、
- * 進捗率・期限リスクなどの派生値はカラムとして持たない
- * （`lib/computed/projects.ts` と同様、読み出し側で都度計算する）。
+ * `lib/schema.ts` の zod スキーマ（Project/Task）に対応するテーブルを定義する。
+ * カラム名・型は zod スキーマのフィールドにできるだけ一対一で対応させ、進捗率・
+ * 期限リスクなどの派生値はカラムとして持たない（`lib/computed/projects.ts` と同様、
+ * 読み出し側で都度計算する）。
  *
  * `Member` はテーブルを持たない（セクション4でメンバー一覧・招待・削除・ロール変更を
  * Clerk Organizations API に完全移行したため。`lib/clerk/org-members.ts` 参照）。
@@ -23,7 +23,7 @@
  * ため、そもそも DB レベルの外部キー制約は付けられない。参照整合性はアプリ層（zod・API層）
  * で担保する方針を踏襲する。
  *
- * `orgId`（categories/projects/tasks）: Clerk Organizations の組織ID（`org_xxx`）で、
+ * `orgId`（projects/tasks）: Clerk Organizations の組織ID（`org_xxx`）で、
  * 「組織 = ワークスペース」（`docs/mock-implementation-plan.md` §2.4, §9.2）に基づき
  * データを組織単位でスコープするための列（セクション3で追加）。`sortOrder`/`createdAt`
  * と同様、ビジネスドメインの派生値ではなく技術的な列のため `lib/schema.ts` の zod
@@ -51,21 +51,11 @@ export const projectStatusEnum = pgEnum("project_status", [
   "done",
 ]);
 
-// ===== Pane 1: プロジェクトカテゴリ =====
-
-export const categories = pgTable(
-  "categories",
-  {
-    id: text("id").primaryKey(),
-    name: text("name").notNull(),
-    /** Clerk Organization ID（`org_xxx`）。組織単位のデータスコープ用。 */
-    orgId: text("org_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [index("categories_org_id_idx").on(table.orgId)],
-);
+export const taskLevelEnum = pgEnum("task_level", [
+  "large",
+  "medium",
+  "small",
+]);
 
 // ===== プロジェクト =====
 
@@ -74,9 +64,6 @@ export const projects = pgTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
-    categoryId: text("category_id")
-      .notNull()
-      .references(() => categories.id, { onDelete: "restrict" }),
     status: projectStatusEnum("status").notNull(),
     /** `YYYY-MM-DD`。未設定は空文字（zod の `deadline: z.string()` に合わせる）。 */
     deadline: text("deadline").notNull().default(""),
@@ -100,6 +87,14 @@ export const tasks = pgTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
+    /**
+     * 親タスクID。大項目は null、中項目は大項目ID、小項目は大項目または中項目IDを持つ。
+     * 同一テーブル内の参照だが、既存データ移行スクリプトを冪等に保つためDB制約は
+     * アプリ層の検証に委ねる。
+     */
+    parentTaskId: text("parent_task_id"),
+    /** 大項目 / 中項目 / 小項目の固定3階層。 */
+    level: taskLevelEnum("level").notNull().default("small"),
     title: text("title").notNull(),
     done: boolean("done").notNull().default(false),
     /** `YYYY-MM-DD`。未設定は空文字。 */
@@ -115,32 +110,33 @@ export const tasks = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [index("tasks_org_id_idx").on(table.orgId)],
+  (table) => [
+    index("tasks_org_id_idx").on(table.orgId),
+    index("tasks_parent_task_id_idx").on(table.parentTaskId),
+  ],
 );
 
 // ===== リレーション（drizzle query API 用。DB制約とは独立） =====
 
-export const categoriesRelations = relations(categories, ({ many }) => ({
-  projects: many(projects),
-}));
-
-export const projectsRelations = relations(projects, ({ one, many }) => ({
-  category: one(categories, {
-    fields: [projects.categoryId],
-    references: [categories.id],
-  }),
+export const projectsRelations = relations(projects, ({ many }) => ({
   tasks: many(tasks),
 }));
 
-export const tasksRelations = relations(tasks, ({ one }) => ({
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
   project: one(projects, {
     fields: [tasks.projectId],
     references: [projects.id],
   }),
+  parent: one(tasks, {
+    fields: [tasks.parentTaskId],
+    references: [tasks.id],
+    relationName: "taskHierarchy",
+  }),
+  children: many(tasks, {
+    relationName: "taskHierarchy",
+  }),
 }));
 
-export type CategoryRow = typeof categories.$inferSelect;
-export type NewCategoryRow = typeof categories.$inferInsert;
 export type ProjectRowDb = typeof projects.$inferSelect;
 export type NewProjectRow = typeof projects.$inferInsert;
 export type TaskRowDb = typeof tasks.$inferSelect;

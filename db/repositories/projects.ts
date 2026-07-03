@@ -25,7 +25,7 @@ function toProject(row: ProjectRowDb, taskRows: TaskRowDb[]): Project {
   return {
     id: row.id,
     name: row.name,
-    categoryId: row.categoryId,
+    categoryId: "",
     status: row.status,
     deadline: row.deadline,
     tasks: taskRows.map(toTask),
@@ -68,6 +68,7 @@ export async function createProject(
   input: {
     id: string;
     name: string;
+    /** @deprecated カテゴリ廃止後は保存しない。4-CまでのAPI互換用。 */
     categoryId: string;
     status: ProjectStatusKey;
     deadline: string;
@@ -82,7 +83,14 @@ export async function createProject(
 
   const [row] = await db
     .insert(projects)
-    .values({ ...input, orgId, sortOrder: maxSort + 1 })
+    .values({
+      id: input.id,
+      name: input.name,
+      status: input.status,
+      deadline: input.deadline,
+      orgId,
+      sortOrder: maxSort + 1,
+    })
     .returning();
   return toProject(row, []);
 }
@@ -92,14 +100,35 @@ export async function updateProject(
   id: string,
   patch: Partial<{
     name: string;
+    /** @deprecated カテゴリ廃止後は保存しない。4-CまでのAPI互換用。 */
     categoryId: string;
     status: ProjectStatusKey;
     deadline: string;
   }>,
 ): Promise<Project | null> {
+  const projectPatch = {
+    ...(patch.name !== undefined && { name: patch.name }),
+    ...(patch.status !== undefined && { status: patch.status }),
+    ...(patch.deadline !== undefined && { deadline: patch.deadline }),
+  };
+  if (Object.keys(projectPatch).length === 0) {
+    const [existingRow] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, id), eq(projects.orgId, orgId)));
+    if (!existingRow) return null;
+
+    const taskRows = await db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.projectId, id))
+      .orderBy(asc(tasks.sortOrder));
+    return toProject(existingRow, taskRows);
+  }
+
   const [row] = await db
     .update(projects)
-    .set(patch)
+    .set(projectPatch)
     .where(and(eq(projects.id, id), eq(projects.orgId, orgId)))
     .returning();
   if (!row) return null;

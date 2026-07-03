@@ -1,5 +1,5 @@
 /**
- * `data/categories.json` / `data/projects.json` の内容を Neon に投入するシードスクリプト。
+ * `data/projects.json` の内容を Neon に投入するシードスクリプト。
  *
  * 実行方法: `npm run db:seed`（`.env.local` の読み込みは `db/client.ts` が行う）。
  * `.env.local` に `SEED_ORG_ID`（Clerk Organizations の組織ID、`org_xxx`）の設定が
@@ -14,16 +14,15 @@
  *
  * 冪等性のため、投入前に既存の行を全削除してから再投入する（開発用シードのため。
  * 本番データを想定した差分マイグレーションではない）。削除順は外部キー制約に従い
- * tasks → projects → categories。
+ * tasks → projects。
  */
 
-import categoriesData from "@/data/categories.json";
 import projectsData from "@/data/projects.json";
-import { categoriesSchema, projectsSchema } from "@/lib/schema";
+import { projectsSchema } from "@/lib/schema";
 
 import { db } from "./client";
 import { buildSeedRows } from "./seed-data";
-import { categories, projects, tasks } from "./schema";
+import { projects, tasks } from "./schema";
 
 async function main() {
   const orgId = process.env.SEED_ORG_ID;
@@ -34,38 +33,28 @@ async function main() {
     );
   }
 
-  const categoriesResult = categoriesSchema.safeParse(categoriesData);
   const projectsResult = projectsSchema.safeParse(projectsData);
 
-  if (!categoriesResult.success || !projectsResult.success) {
+  if (!projectsResult.success) {
     const errors = [
-      !categoriesResult.success &&
-        `categories.json: ${categoriesResult.error.issues[0]?.message}`,
       !projectsResult.success &&
         `projects.json: ${projectsResult.error.issues[0]?.message}`,
     ].filter(Boolean);
     throw new Error(`データの形式が正しくありません:\n${errors.join("\n")}`);
   }
 
-  const { categoryRows, projectRows, taskRows } = buildSeedRows(
-    categoriesResult.data,
-    projectsResult.data,
-    orgId,
-  );
+  const { projectRows, taskRows } = buildSeedRows(projectsResult.data, orgId);
 
   console.log("既存データを削除しています...");
   await db.delete(tasks);
   await db.delete(projects);
-  await db.delete(categories);
 
   console.log("シードデータを投入しています...");
-  if (categoryRows.length > 0) await db.insert(categories).values(categoryRows);
   if (projectRows.length > 0) await db.insert(projects).values(projectRows);
   if (taskRows.length > 0) await db.insert(tasks).values(taskRows);
 
   console.log(
-    `完了: categories=${categoryRows.length} ` +
-      `projects=${projectRows.length} tasks=${taskRows.length}`,
+    `完了: projects=${projectRows.length} tasks=${taskRows.length}`,
   );
 }
 

@@ -18,6 +18,8 @@ import type { Task } from "@/lib/schema";
 export function toTask(row: TaskRowDb): Task {
   return {
     id: row.id,
+    parentTaskId: row.parentTaskId,
+    level: row.level,
     title: row.title,
     done: row.done,
     dueDate: row.dueDate,
@@ -47,6 +49,8 @@ export async function createTask(
   input: {
     id: string;
     title: string;
+    parentTaskId?: string | null;
+    level?: Task["level"];
     done?: boolean;
     dueDate?: string;
     assigneeId?: string;
@@ -66,6 +70,8 @@ export async function createTask(
     .values({
       id: input.id,
       projectId,
+      parentTaskId: input.parentTaskId ?? null,
+      level: input.level ?? "small",
       orgId: resolvedOrgId,
       title: input.title,
       done: input.done ?? false,
@@ -83,6 +89,8 @@ export async function updateTask(
   id: string,
   patch: Partial<{
     title: string;
+    parentTaskId: string | null;
+    level: Task["level"];
     done: boolean;
     dueDate: string;
     assigneeId: string;

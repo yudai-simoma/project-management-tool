@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { buildSeedRows } from "@/db/seed-data";
-import type { Category, Project } from "@/lib/schema";
-
-const categories: Category[] = [
-  { id: "cat1", name: "プロダクト開発" },
-  { id: "cat2", name: "社内システム" },
-];
+import type { Project } from "@/lib/schema";
+import {
+  DEFAULT_LARGE_TASK_TITLE,
+  getDefaultLargeTaskId,
+} from "@/lib/task-hierarchy";
 
 const projects: Project[] = [
   {
@@ -18,6 +17,8 @@ const projects: Project[] = [
     tasks: [
       {
         id: "t1-1",
+        parentTaskId: null,
+        level: "small",
         title: "要件定義",
         done: true,
         dueDate: "2026-06-20",
@@ -26,6 +27,8 @@ const projects: Project[] = [
       },
       {
         id: "t1-2",
+        parentTaskId: null,
+        level: "small",
         title: "実装",
         done: false,
         dueDate: "",
@@ -47,18 +50,12 @@ const projects: Project[] = [
 const orgId = "org_test";
 
 describe("buildSeedRows", () => {
-  it("categories に orgId を付与して insert 行に変換する", () => {
-    const { categoryRows } = buildSeedRows(categories, projects, orgId);
-    expect(categoryRows).toEqual(categories.map((c) => ({ ...c, orgId })));
-  });
-
-  it("projects の配列順を sortOrder として採番し、orgId を付与し、tasks を持たない", () => {
-    const { projectRows } = buildSeedRows(categories, projects, orgId);
+  it("projects の配列順を sortOrder として採番し、orgId を付与し、カテゴリを持たない", () => {
+    const { projectRows } = buildSeedRows(projects, orgId);
     expect(projectRows).toEqual([
       {
         id: "pr1",
         name: "モバイルアプリ新機能開発",
-        categoryId: "cat1",
         status: "inProgress",
         deadline: "2026-07-05",
         sortOrder: 0,
@@ -67,7 +64,6 @@ describe("buildSeedRows", () => {
       {
         id: "pr2",
         name: "オフィス移転プロジェクト",
-        categoryId: "cat2",
         status: "planning",
         deadline: "",
         sortOrder: 1,
@@ -75,14 +71,32 @@ describe("buildSeedRows", () => {
       },
     ]);
     expect(projectRows.every((p) => !("tasks" in p))).toBe(true);
+    expect(projectRows.every((p) => !("categoryId" in p))).toBe(true);
   });
 
-  it("tasks をフラット化し、projectId・orgId とプロジェクト内の sortOrder を付与する（未アサイン=空文字を維持）", () => {
-    const { taskRows } = buildSeedRows(categories, projects, orgId);
+  it("各プロジェクトにデフォルト大項目を作り、旧タスクを小項目としてぶら下げる", () => {
+    const { taskRows } = buildSeedRows(projects, orgId);
+    const parentTaskId = getDefaultLargeTaskId("pr1");
+
     expect(taskRows).toEqual([
+      {
+        id: parentTaskId,
+        projectId: "pr1",
+        parentTaskId: null,
+        level: "large",
+        title: DEFAULT_LARGE_TASK_TITLE,
+        done: false,
+        dueDate: "",
+        assigneeId: "",
+        memo: "",
+        sortOrder: 0,
+        orgId,
+      },
       {
         id: "t1-1",
         projectId: "pr1",
+        parentTaskId,
+        level: "small",
         title: "要件定義",
         done: true,
         dueDate: "2026-06-20",
@@ -94,6 +108,8 @@ describe("buildSeedRows", () => {
       {
         id: "t1-2",
         projectId: "pr1",
+        parentTaskId,
+        level: "small",
         title: "実装",
         done: false,
         dueDate: "",
@@ -102,11 +118,38 @@ describe("buildSeedRows", () => {
         sortOrder: 1,
         orgId,
       },
+      {
+        id: getDefaultLargeTaskId("pr2"),
+        projectId: "pr2",
+        parentTaskId: null,
+        level: "large",
+        title: DEFAULT_LARGE_TASK_TITLE,
+        done: false,
+        dueDate: "",
+        assigneeId: "",
+        memo: "",
+        sortOrder: 0,
+        orgId,
+      },
     ]);
   });
 
-  it("タスク0件のプロジェクトからは何も生成しない", () => {
-    const { taskRows } = buildSeedRows(categories, projects, orgId);
-    expect(taskRows.filter((t) => t.projectId === "pr2")).toEqual([]);
+  it("タスク0件のプロジェクトにも未分類の大項目を生成する", () => {
+    const { taskRows } = buildSeedRows(projects, orgId);
+    expect(taskRows.filter((t) => t.projectId === "pr2")).toEqual([
+      {
+        id: getDefaultLargeTaskId("pr2"),
+        projectId: "pr2",
+        parentTaskId: null,
+        level: "large",
+        title: DEFAULT_LARGE_TASK_TITLE,
+        done: false,
+        dueDate: "",
+        assigneeId: "",
+        memo: "",
+        sortOrder: 0,
+        orgId,
+      },
+    ]);
   });
 });

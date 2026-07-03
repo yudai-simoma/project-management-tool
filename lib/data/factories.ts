@@ -8,6 +8,8 @@ import { type Task, type Project, type ProjectStatusKey } from "@/lib/schema";
 export function createMinimalTask(title: string): Task {
   return {
     id: `t-${crypto.randomUUID()}`,
+    parentTaskId: null,
+    level: "small",
     title,
     done: false,
     dueDate: "",

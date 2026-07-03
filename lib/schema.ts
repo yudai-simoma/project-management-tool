@@ -3,15 +3,18 @@
  * 雛形の SSoT として、UI コンポーネントはここから型をインポートする。
  *
  * 「社内のプロジェクト管理ツール」ドメイン。外部クライアントは登場せず、
- * 案件は社内の分類軸（カテゴリ）でグルーピングし、担当者は組織メンバーから
- * アサインする（自由テキストにしない）。
+ * プロジェクトは一階層の一覧として扱い、担当者は組織メンバーからアサインする
+ * （自由テキストにしない）。
  */
 
 import { z } from "zod";
 
-// ===== Pane 1: プロジェクトカテゴリ =====
+// ===== 移行期間の互換型: プロジェクトカテゴリ =====
 
-/** プロジェクトカテゴリ（社内の分類軸）。Pane 1 の Sidebar 最上位グループ単位。 */
+/**
+ * @deprecated ステップ4-B以降、カテゴリはDB/UIともに廃止対象。
+ * 4-CでPane1〜3/APIを切り替えるまでの互換用にのみ残している。
+ */
 export const categorySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -51,15 +54,22 @@ export type ProjectStatusKey = z.infer<typeof projectStatusKeySchema>;
 /** Pane 2 カンバン列の表示順。空列も含め常に 4 列表示する。 */
 export const STATUS_ORDER = projectStatusKeySchema.options;
 
-// ===== タスク（軽量） =====
+// ===== タスク =====
+
+export const taskLevelSchema = z.enum(["large", "medium", "small"]);
+export type TaskLevel = z.infer<typeof taskLevelSchema>;
 
 /**
- * プロジェクト配下のタスク。5 項目の最小構成（タイトル・完了フラグ・期限・担当者・メモ）。
- * 固定フェーズは持たず、自由に追加・削除できる。`assigneeId` は `Member.id` への参照
- * （未アサインは空文字）で、担当者は組織メンバーから選択する。
+ * プロジェクト配下のタスク。最大3段階固定（大項目 → 中項目 → 小項目）で、
+ * 中項目は任意。DBは単一 `tasks` テーブルに `parentTaskId` と `level` を持つ。
+ *
+ * `assigneeId` は `Member.id` への参照（未アサインは空文字）で、担当者は組織
+ * メンバーから選択する。
  */
 export const taskSchema = z.object({
   id: z.string(),
+  parentTaskId: z.string().min(1).nullable().default(null),
+  level: taskLevelSchema.default("small"),
   title: z.string(),
   done: z.boolean(),
   dueDate: z.string(),
@@ -71,14 +81,18 @@ export type Task = z.infer<typeof taskSchema>;
 // ===== プロジェクト =====
 
 /**
- * プロジェクトの最上位データ。Pane 1 の階層では `categoryId` でカテゴリに紐づき、
- * Pane 2 では `status` でカンバン列に分類される。進捗率は `tasks` から派生計算する
+ * プロジェクトの最上位データ。ステップ4-B以降、カテゴリには紐づけず Pane 1 では
+ * プロジェクト名だけの一階層一覧として扱う。進捗率は配下の小項目タスクから派生計算する
  * （`lib/computed/projects.ts` の `getProjectProgress`）ため、フィールドとしては持たない。
  */
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string(),
-  categoryId: z.string(),
+  /**
+   * @deprecated カテゴリ廃止に伴い新モデルでは使わない。4-Cで呼び出し側を切り替える
+   * まで、旧JSON/旧UI互換のためだけに許容する。
+   */
+  categoryId: z.string().optional().default(""),
   status: projectStatusKeySchema,
   deadline: z.string(),
   tasks: z.array(taskSchema),

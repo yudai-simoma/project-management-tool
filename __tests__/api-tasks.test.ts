@@ -22,6 +22,8 @@ import { DELETE, PATCH } from "@/app/api/tasks/[id]/route";
 
 const sampleTask = {
   id: "t-1",
+  parentTaskId: null,
+  level: "small" as const,
   title: "要件定義",
   done: false,
   dueDate: "",
@@ -49,6 +51,8 @@ describe("POST /api/projects/[id]/tasks", () => {
     expect(tasksRepo.createTask).toHaveBeenCalledWith("org_test", "p-1", {
       id: "t-1",
       title: "要件定義",
+      parentTaskId: null,
+      level: "small",
       done: false,
       dueDate: "",
       assigneeId: "",

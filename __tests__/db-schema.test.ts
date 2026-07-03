@@ -1,42 +1,32 @@
 import { getTableColumns, getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
-import { categories, projects, tasks } from "@/db/schema";
+import { projects, tasks } from "@/db/schema";
 
 /**
  * `db/schema.ts` の型・カラム設計に関する軽量ユニットテスト。
  * 実 DB 接続は不要（`@neondatabase/serverless` の HTTP クライアントを一切生成しない）。
  *
  * `members` テーブルはセクション4で廃止した（Clerk Organizations API に完全移行、
- * `lib/clerk/org-members.ts` 参照）。
+ * `lib/clerk/org-members.ts` 参照）。`categories` テーブルはステップ4-Bで廃止した。
  */
 describe("db/schema", () => {
   it("テーブル名が snake_case で定義されている", () => {
-    expect(getTableName(categories)).toBe("categories");
     expect(getTableName(projects)).toBe("projects");
     expect(getTableName(tasks)).toBe("tasks");
   });
 
-  it("categories テーブルが zod の Category スキーマに対応するカラムを持つ", () => {
-    const columns = getTableColumns(categories);
-    expect(Object.keys(columns)).toEqual(
-      expect.arrayContaining(["id", "name"]),
-    );
-    expect(columns.id.primary).toBe(true);
-    expect(columns.name.notNull).toBe(true);
-  });
-
-  it("projects テーブルが zod の Project スキーマに対応するカラムを持ち、進捗率のような派生値カラムを持たない", () => {
+  it("projects テーブルが Project スキーマに対応するカラムを持ち、カテゴリや派生値カラムを持たない", () => {
     const columns = getTableColumns(projects);
     expect(Object.keys(columns)).toEqual(
       expect.arrayContaining([
         "id",
         "name",
-        "categoryId",
         "status",
         "deadline",
       ]),
     );
+    expect(Object.keys(columns)).not.toContain("categoryId");
     expect(columns.status.enumValues).toEqual([
       "planning",
       "inProgress",
@@ -47,8 +37,7 @@ describe("db/schema", () => {
     expect(Object.keys(columns)).not.toContain("deadlineRisk");
   });
 
-  it("categories/projects/tasks が組織スコープ用の orgId 列を持つ", () => {
-    expect(getTableColumns(categories).orgId.notNull).toBe(true);
+  it("projects/tasks が組織スコープ用の orgId 列を持つ", () => {
     expect(getTableColumns(projects).orgId.notNull).toBe(true);
     expect(getTableColumns(tasks).orgId.notNull).toBe(true);
   });
@@ -59,6 +48,8 @@ describe("db/schema", () => {
       expect.arrayContaining([
         "id",
         "projectId",
+        "parentTaskId",
+        "level",
         "title",
         "done",
         "dueDate",
@@ -68,6 +59,9 @@ describe("db/schema", () => {
     );
     expect(columns.done.notNull).toBe(true);
     expect(columns.done.default).toBe(false);
+    expect(columns.level.enumValues).toEqual(["large", "medium", "small"]);
+    expect(columns.level.notNull).toBe(true);
+    expect(columns.level.default).toBe("small");
   });
 
   it("assigneeId には外部キー制約を付けない（未アサインの空文字・Clerkユーザーへの参照を許容するため）", () => {
