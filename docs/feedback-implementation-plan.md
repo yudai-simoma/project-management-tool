@@ -48,7 +48,7 @@
 | #   | ステップ                                             | 依存        | ステータス |
 | --- | ----------------------------------------------------- | ----------- | ---------- |
 | 1   | 会員承認制 + サービス管理者専用ページ                 | なし        | ✅ 完了    |
-| 2   | カテゴリ名・プロジェクト名のインライン編集            | なし        | ⬜ 未着手  |
+| 2   | カテゴリ名・プロジェクト名のインライン編集            | なし        | ✅ 完了    |
 | 3   | AIチャットUX改善（送信・履歴・トークン表示・提案制）  | なし        | ⬜ 未着手  |
 | 4-A | 【設計確定】4ペイン再構成のヒアリング・仕様合意       | ステップ2推奨 | ⬜ 未着手  |
 | 4-B | データモデル変更（タスク階層・カテゴリ一階層化）      | 4-A         | ⬜ 未着手  |
@@ -277,9 +277,35 @@ docs/feedback-implementation-plan.md のステップ2「カテゴリ名・プロ
 docs/feedback-implementation-plan.md のステップ2のステータスを更新し、実装メモを追記してください。
 ```
 
-### 実装メモ
+### 実装メモ（2026-07-04 完了）
 
-（未着手。着手・完了後にここへ追記する）
+**配置判断**:
+
+- プロジェクト名編集は **Pane2のカンバン行** に追加した。`designing-workspace-ui` の決定木で確認した結果、これは新しい情報を足すのではなく既存のプロジェクト名表示を `InlineTextField` に置き換える変更であり、既存SSoT（`docs/mock-implementation-plan.md` §2.2）上も Pane2 行は「プロジェクト名＋進捗率バー＋期限バッジ」を表示する場所のため、既存パターン内で実装できると判断した
+- Pane3ヘッダーへの編集導線追加は見送った。Pane3は「読む場所」、Pane4は「編集の本拠地」という `designing-workspace-ui` の責務分離に触れやすく、今回のスコープでは Pane2 の既存表示置換で要件を満たせるため
+- `openspec/decision/` はこのワークツリーに存在しなかったため、`Workspace.tsx` と `docs/mock-implementation-plan.md` §2.2 を実装上のSSoTとして参照した
+
+**変更したファイル**:
+
+- `lib/api/workspace-client.ts`: `updateCategoryApi(id, { name })` を追加。`PATCH /api/categories/[id]` に `name` を送る薄い fetch wrapper
+- `components/workspace/Workspace.tsx`: `updateCategoryName` / `updateProjectName` を追加。既存の `runOptimistic` 方針に合わせ、ローカル state を即時更新し、API失敗時は前の名前へロールバックする
+- `components/workspace/CategoryPane.tsx`: Pane1のカテゴリ名表示を `InlineTextField` に置換。入力 focus 時に該当カテゴリを選択し、blur/Enter 確定で `onUpdateCategoryName` を呼ぶ
+- `components/workspace/SortableProjectRow.tsx`・`ProjectListPane.tsx`: Pane2のプロジェクト名表示を `InlineTextField` に置換。入力 focus 時に該当プロジェクトを選択し、blur/Enter 確定で既存 `updateProjectApi` 経由の更新ハンドラを呼ぶ
+- `components/primitives/InlineTextField.tsx`: 既存プリミティブを再利用しつつ、Pane選択と親行クリック抑止に必要な `onFocus` / `onClick` を任意propとして追加
+- `__tests__/workspace-client.test.ts`: `updateCategoryApi` と `updateProjectApi({ name })` のPATCH送信を追加検証
+- `__tests__/inline-name-editing.test.tsx`: Pane1カテゴリ名・Pane2プロジェクト名の `InlineTextField` 保存イベントを追加検証
+- `__tests__/page.test.tsx`: カテゴリ名が input value になったため、スモーク確認を `getByDisplayValue` に更新
+
+**確認・検証状況**:
+
+- `npm run test`（206件）・`npm run lint`・`npm run build` はグリーン
+- `npm run test` は実Neon接続テストを含むため、通常サンドボックスではDNS制限で一度失敗し、ネットワーク許可付きで再実行して成功
+- `npm run build` は `next/font` がGoogle Fontsを取得するため、通常サンドボックスでは一度失敗し、ネットワーク許可付きで再実行して成功
+
+**次ステップへの引き継ぎ**:
+
+- カテゴリ概念自体の構造変更・一階層化には手を付けていない。ステップ4でカテゴリの扱いを再設計する場合、本ステップの Pane1 `InlineTextField` は差し替え・削除対象になりうる
+- 名前変更への新しいロール制限は追加していない。既存APIの挙動をそのまま踏襲している
 
 ---
 

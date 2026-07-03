@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createCategoryApi,
   deleteTaskApi,
+  updateCategoryApi,
+  updateProjectApi,
   updateTaskApi,
 } from "@/lib/api/workspace-client";
 
@@ -31,6 +33,52 @@ describe("workspace-client (fetch wrapper)", () => {
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/categories",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("カテゴリ名更新はPATCHでnameを送る", async () => {
+    vi.mocked(global.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ id: "cat-1", name: "B" }), {
+        status: 200,
+      }),
+    );
+
+    const result = await updateCategoryApi("cat-1", { name: "B" });
+
+    expect(result).toEqual({ id: "cat-1", name: "B" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/categories/cat-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ name: "B" }),
+      }),
+    );
+  });
+
+  it("プロジェクト名更新は既存のupdateProjectApiでPATCHできる", async () => {
+    vi.mocked(global.fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "p-1",
+          name: "新プロジェクト",
+          categoryId: "cat-1",
+          status: "planning",
+          deadline: "",
+          tasks: [],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await updateProjectApi("p-1", { name: "新プロジェクト" });
+
+    expect(result.name).toBe("新プロジェクト");
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/projects/p-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ name: "新プロジェクト" }),
+      }),
     );
   });
 

@@ -13,6 +13,8 @@
  * 雛形では候補者の「氏名・採用担当・連絡先・希望年収（min/max）」等で再利用。
  */
 
+import type { FocusEventHandler, MouseEventHandler } from "react";
+
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +31,10 @@ export type InlineTextFieldProps = {
   placeholder?: string;
   /** className override（width 制限などに使う） */
   className?: string;
+  /** フォーカス時の追加処理（Pane 選択など） */
+  onFocus?: FocusEventHandler<HTMLInputElement>;
+  /** クリック時の追加処理（親の行クリック抑止など） */
+  onClick?: MouseEventHandler<HTMLInputElement>;
 };
 
 export function InlineTextField({
@@ -38,6 +44,8 @@ export function InlineTextField({
   inputType = "text",
   placeholder,
   className,
+  onFocus,
+  onClick,
 }: InlineTextFieldProps) {
   return (
     <Input
@@ -45,6 +53,8 @@ export function InlineTextField({
       defaultValue={value}
       placeholder={placeholder ?? "未設定"}
       aria-label={ariaLabel}
+      onFocus={onFocus}
+      onClick={onClick}
       onBlur={(e) => {
         if (e.target.value !== value) onSave(e.target.value);
       }}

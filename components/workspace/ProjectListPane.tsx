@@ -56,6 +56,7 @@ type ProjectListPaneProps = {
   onSelectProject: (id: string) => void;
   onAddProject: (status: ProjectStatusKey, name: string) => void;
   onDeleteProject: (id: string, name: string) => void;
+  onUpdateProjectName: (id: string, name: string) => void;
   onMoveProject: (
     id: string,
     toStatus: ProjectStatusKey,
@@ -72,6 +73,7 @@ export function ProjectListPane({
   onSelectProject,
   onAddProject,
   onDeleteProject,
+  onUpdateProjectName,
   onMoveProject,
   canAddProject,
   canDeleteProject,
@@ -206,6 +208,7 @@ export function ProjectListPane({
                 items={group.items}
                 selectedProjectId={selectedProjectId}
                 onSelectProject={onSelectProject}
+                onUpdateProjectName={onUpdateProjectName}
                 canAddProject={canAddProject}
                 canDeleteProject={canDeleteProject}
                 onAddRequest={() =>
@@ -268,6 +271,7 @@ function StatusGroup({
   items,
   selectedProjectId,
   onSelectProject,
+  onUpdateProjectName,
   canAddProject,
   canDeleteProject,
   onAddRequest,
@@ -278,6 +282,7 @@ function StatusGroup({
   items: ProjectRow[];
   selectedProjectId: string;
   onSelectProject: (id: string) => void;
+  onUpdateProjectName: (id: string, name: string) => void;
   canAddProject: boolean;
   canDeleteProject: boolean;
   onAddRequest: () => void;
@@ -356,6 +361,7 @@ function StatusGroup({
                 status={status}
                 selected={project.id === selectedProjectId}
                 onSelect={onSelectProject}
+                onRename={onUpdateProjectName}
                 actions={
                   <Tooltip>
                     <TooltipTrigger

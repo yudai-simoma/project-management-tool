@@ -26,6 +26,16 @@ export function deleteCategoryApi(id: string): Promise<void> {
   return apiFetch<void>(`/api/categories/${id}`, { method: "DELETE" });
 }
 
+export function updateCategoryApi(
+  id: string,
+  patch: { name: string },
+): Promise<Category> {
+  return apiFetch<Category>(`/api/categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
 // ===== プロジェクト =====
 
 export function createProjectApi(input: {

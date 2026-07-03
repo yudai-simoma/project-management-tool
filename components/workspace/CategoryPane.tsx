@@ -18,6 +18,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { InlineTextField } from "@/components/primitives";
 import { Pane1Toggle } from "@/components/workspace/Pane1Toggle";
 import { AddItemDialog } from "@/components/workspace/AddItemDialog";
 
@@ -30,6 +31,7 @@ type CategoryPaneProps = {
   onSelectCategory: (categoryId: string | null) => void;
   onSelectProject: (projectId: string) => void;
   onAddProject: (categoryId: string, name: string) => void;
+  onUpdateCategoryName: (categoryId: string, name: string) => void;
 };
 
 /**
@@ -53,6 +55,7 @@ export function CategoryPane({
   onSelectCategory,
   onSelectProject,
   onAddProject,
+  onUpdateCategoryName,
 }: CategoryPaneProps) {
   const [addDialogCategoryId, setAddDialogCategoryId] = useState<string | null>(
     null,
@@ -97,11 +100,7 @@ export function CategoryPane({
 
             return (
               <SidebarGroup key={category.id} className="px-1">
-                <button
-                  type="button"
-                  onClick={() =>
-                    onSelectCategory(isCategoryActive ? null : category.id)
-                  }
+                <div
                   className={cn(
                     "flex h-8 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-xs font-semibold tracking-wide uppercase transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                     isCategoryActive
@@ -109,11 +108,20 @@ export function CategoryPane({
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                   )}
                 >
-                  <span className="truncate">{category.name}</span>
+                  <InlineTextField
+                    key={`${category.id}:${category.name}`}
+                    value={category.name}
+                    onSave={(name) => onUpdateCategoryName(category.id, name)}
+                    ariaLabel={`${category.name} のカテゴリ名`}
+                    className="h-7 flex-1"
+                    onFocus={() => {
+                      if (!isCategoryActive) onSelectCategory(category.id);
+                    }}
+                  />
                   <Badge variant="secondary" size="xs">
                     {categoryProjects.length}
                   </Badge>
-                </button>
+                </div>
                 <SidebarGroupAction
                   title={`${category.name} にプロジェクトを追加`}
                   onClick={() => setAddDialogCategoryId(category.id)}

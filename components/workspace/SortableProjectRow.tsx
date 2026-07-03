@@ -10,6 +10,7 @@ import { type ProjectRow, type ProjectStatusKey } from "@/lib/schema";
 import { DEADLINE_RISK_LABEL } from "@/lib/labels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { InlineTextField } from "@/components/primitives";
 import { Progress } from "@/components/ui/progress";
 import {
   DropdownMenu,
@@ -30,12 +31,14 @@ export function SortableProjectRow({
   status,
   selected,
   onSelect,
+  onRename,
   actions,
 }: {
   project: ProjectRow;
   status: ProjectStatusKey;
   selected: boolean;
   onSelect: (id: string) => void;
+  onRename: (id: string, name: string) => void;
   actions: ReactNode;
 }) {
   const {
@@ -64,8 +67,7 @@ export function SortableProjectRow({
         isDragging && "pointer-events-none opacity-50",
       )}
     >
-      <button
-        type="button"
+      <div
         onClick={() => onSelect(project.id)}
         className={cn(
           "flex w-full flex-col gap-2 rounded-md px-2.5 py-2.5 text-left transition-colors",
@@ -91,9 +93,15 @@ export function SortableProjectRow({
           >
             <GripVertical aria-hidden="true" className="size-4" />
           </span>
-          <span className="min-w-0 flex-1 truncate text-sm">
-            {project.name}
-          </span>
+          <InlineTextField
+            key={`${project.id}:${project.name}`}
+            value={project.name}
+            onSave={(name) => onRename(project.id, name)}
+            ariaLabel={`${project.name} のプロジェクト名`}
+            className="h-7 flex-1"
+            onFocus={() => onSelect(project.id)}
+            onClick={(e) => e.stopPropagation()}
+          />
           <DeadlineBadge
             deadline={project.deadline}
             risk={project.deadlineRisk}
@@ -105,7 +113,7 @@ export function SortableProjectRow({
             {project.progress}%
           </span>
         </div>
-      </button>
+      </div>
       <DropdownMenu>
         <DropdownMenuTrigger
           render={

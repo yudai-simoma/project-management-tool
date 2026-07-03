@@ -72,9 +72,8 @@ describe("Page", () => {
     // ワークスペース名（Pane 1 ヘッダー、data/workspace.json 由来）
     expect(screen.getByText("プロジェクト管理")).toBeInTheDocument();
 
-    // カテゴリ名（Pane 1 のグループ見出し等、複数箇所に表示されるため
-    // getAllByText で存在確認する）
-    expect(screen.getAllByText("プロダクト開発").length).toBeGreaterThan(0);
+    // カテゴリ名（Pane 1 の InlineTextField）
+    expect(screen.getByDisplayValue("プロダクト開発")).toBeInTheDocument();
 
     // プロジェクト一覧の見出し（Pane 2）
     expect(screen.getByText("プロジェクト一覧")).toBeInTheDocument();

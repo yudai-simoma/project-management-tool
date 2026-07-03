@@ -54,6 +54,7 @@ import { runOptimistic, removeById, insertAt } from "@/lib/optimistic";
 import {
   createCategoryApi,
   deleteCategoryApi,
+  updateCategoryApi,
   createProjectApi,
   updateProjectApi,
   deleteProjectApi,
@@ -306,6 +307,31 @@ export function Workspace({
     runOptimistic(
       () => createCategoryApi({ id, name }),
       () => setCategories((prev) => prev.filter((c) => c.id !== id)),
+    );
+  }, []);
+
+  const updateCategoryName = useCallback((categoryId: string, name: string) => {
+    let previousName: string | undefined;
+    setCategories((prev) =>
+      prev.map((category) => {
+        if (category.id !== categoryId) return category;
+        previousName = category.name;
+        return { ...category, name };
+      }),
+    );
+
+    runOptimistic(
+      () => updateCategoryApi(categoryId, { name }),
+      () => {
+        if (previousName === undefined) return;
+        setCategories((prev) =>
+          prev.map((category) =>
+            category.id === categoryId
+              ? { ...category, name: previousName! }
+              : category,
+          ),
+        );
+      },
     );
   }, []);
 
@@ -566,6 +592,31 @@ export function Workspace({
     [selectedProjectId],
   );
 
+  const updateProjectName = useCallback((projectId: string, name: string) => {
+    let previousName: string | undefined;
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        previousName = project.name;
+        return { ...project, name };
+      }),
+    );
+
+    runOptimistic(
+      () => updateProjectApi(projectId, { name }),
+      () => {
+        if (previousName === undefined) return;
+        setProjects((prev) =>
+          prev.map((project) =>
+            project.id === projectId
+              ? { ...project, name: previousName! }
+              : project,
+          ),
+        );
+      },
+    );
+  }, []);
+
   // Pane 3 のタスク行クリックで Pane 4「詳細」タブを開く。
   const openDetail = useCallback((next: SelectedDetail, anchor?: string) => {
     setSelectedDetail(next);
@@ -617,6 +668,7 @@ export function Workspace({
         onSelectCategory={selectCategory}
         onSelectProject={selectProjectFromPane1}
         onAddProject={addProjectForCategory}
+        onUpdateCategoryName={updateCategoryName}
       />
       <SidebarInset className="flex min-w-0 flex-col bg-background">
         <GlobalHeader
@@ -642,6 +694,7 @@ export function Workspace({
                 onSelectProject={selectProject}
                 onAddProject={addProjectForStatus}
                 onDeleteProject={deleteProject}
+                onUpdateProjectName={updateProjectName}
                 onMoveProject={moveProject}
                 canAddProject={selectedCategoryId !== null}
                 canDeleteProject={canManage}
