@@ -10,6 +10,8 @@ import {
 
 const baseTask = (over: Partial<Task>): Task => ({
   id: "t1",
+  parentTaskId: "large-1",
+  level: "small",
   title: "タスク",
   done: false,
   dueDate: "",
@@ -21,7 +23,6 @@ const baseTask = (over: Partial<Task>): Task => ({
 const baseProject = (over: Partial<Project>): Project => ({
   id: "pr1",
   name: "テストプロジェクト",
-  categoryId: "cat1",
   status: "inProgress",
   deadline: "",
   tasks: [],
@@ -36,6 +37,7 @@ describe("getProjectProgress", () => {
   it("完了タスクの比率で算出する", () => {
     const project = baseProject({
       tasks: [
+        baseTask({ id: "large-1", parentTaskId: null, level: "large" }),
         baseTask({ id: "t1", done: true }),
         baseTask({ id: "t2", done: true }),
         baseTask({ id: "t3", done: false }),
@@ -47,7 +49,10 @@ describe("getProjectProgress", () => {
 
   it("全タスク完了なら100%", () => {
     const project = baseProject({
-      tasks: [baseTask({ id: "t1", done: true })],
+      tasks: [
+        baseTask({ id: "large-1", parentTaskId: null, level: "large" }),
+        baseTask({ id: "t1", done: true }),
+      ],
     });
     expect(getProjectProgress(project)).toBe(100);
   });
@@ -55,6 +60,7 @@ describe("getProjectProgress", () => {
   it("端数は丸める", () => {
     const project = baseProject({
       tasks: [
+        baseTask({ id: "large-1", parentTaskId: null, level: "large" }),
         baseTask({ id: "t1", done: true }),
         baseTask({ id: "t2", done: false }),
         baseTask({ id: "t3", done: false }),
@@ -69,6 +75,7 @@ describe("getTaskCounts", () => {
   it("完了数と総数を返す", () => {
     const project = baseProject({
       tasks: [
+        baseTask({ id: "large-1", parentTaskId: null, level: "large" }),
         baseTask({ id: "t1", done: true }),
         baseTask({ id: "t2", done: false }),
       ],

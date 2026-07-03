@@ -41,7 +41,6 @@ export function updateCategoryApi(
 export function createProjectApi(input: {
   id: string;
   name: string;
-  categoryId: string;
   status: ProjectStatusKey;
   deadline: string;
 }): Promise<Project> {
@@ -55,7 +54,6 @@ export function updateProjectApi(
   id: string,
   patch: Partial<{
     name: string;
-    categoryId: string;
     status: ProjectStatusKey;
     deadline: string;
   }>,
@@ -75,7 +73,7 @@ export function deleteProjectApi(id: string): Promise<void> {
  * （`docs/backend-implementation-plan.md` セクション2で確認した「全体を一括で再採番する」方針）。
  */
 export function reorderProjectsApi(
-  items: { id: string; status: ProjectStatusKey; sortOrder: number }[],
+  items: { id: string; status?: ProjectStatusKey; sortOrder: number }[],
 ): Promise<void> {
   return apiFetch<void>("/api/projects/reorder", {
     method: "PATCH",
@@ -90,6 +88,8 @@ export function createTaskApi(
   input: {
     id: string;
     title: string;
+    parentTaskId?: string | null;
+    level?: Task["level"];
     done?: boolean;
     dueDate?: string;
     assigneeId?: string;
@@ -106,6 +106,8 @@ export function updateTaskApi(
   id: string,
   patch: Partial<{
     title: string;
+    parentTaskId: string | null;
+    level: Task["level"];
     done: boolean;
     dueDate: string;
     assigneeId: string;

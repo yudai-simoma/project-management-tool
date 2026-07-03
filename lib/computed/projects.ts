@@ -11,6 +11,7 @@ import { differenceInCalendarDays } from "date-fns";
 
 import {
   type Project,
+  type Task,
   type DeadlineRisk,
   type ProjectStatusKey,
   STATUS_ORDER,
@@ -25,9 +26,7 @@ const DUE_SOON_THRESHOLD_DAYS = 7;
  * タスクが 0 件のプロジェクトは 0% とする（手動入力は行わない）。
  */
 export function getProjectProgress(project: Project): number {
-  if (project.tasks.length === 0) return 0;
-  const doneCount = project.tasks.filter((t) => t.done).length;
-  return Math.round((doneCount / project.tasks.length) * 100);
+  return getTaskProgress(project.tasks, null);
 }
 
 /**
@@ -57,10 +56,88 @@ export function getTaskCounts(project: Project): {
   done: number;
   total: number;
 } {
+  return getSmallTaskCounts(project.tasks, null);
+}
+
+export function getTaskChildren(tasks: Task[], parentTaskId: string | null) {
+  return tasks.filter((task) => task.parentTaskId === parentTaskId);
+}
+
+export function getLargeTasks(tasks: Task[]) {
+  return tasks.filter((task) => task.level === "large");
+}
+
+export function getMediumTasks(tasks: Task[], largeTaskId: string) {
+  return tasks.filter(
+    (task) => task.level === "medium" && task.parentTaskId === largeTaskId,
+  );
+}
+
+export function getSmallTasks(tasks: Task[], parentTaskId: string) {
+  return tasks.filter(
+    (task) => task.level === "small" && task.parentTaskId === parentTaskId,
+  );
+}
+
+export function findTaskById(tasks: Task[], taskId: string | null) {
+  if (!taskId) return null;
+  return tasks.find((task) => task.id === taskId) ?? null;
+}
+
+export function getTaskLineage(tasks: Task[], task: Task | null) {
+  const lineage: Task[] = [];
+  let current = task;
+  while (current) {
+    lineage.unshift(current);
+    current = findTaskById(tasks, current.parentTaskId);
+  }
+  return lineage;
+}
+
+export function getSmallTaskCounts(
+  tasks: Task[],
+  parentTaskId: string | null,
+): {
+  done: number;
+  total: number;
+} {
+  const parent = findTaskById(tasks, parentTaskId);
+  const scopedTasks =
+    parentTaskId === null
+      ? tasks
+      : tasks.filter((task) => isDescendantOf(tasks, task, parentTaskId));
+  const smallTasks = scopedTasks.filter((task) => {
+    if (task.level !== "small") return false;
+    if (!parent) return true;
+    return task.id === parent.id || isDescendantOf(tasks, task, parent.id);
+  });
+
   return {
-    done: project.tasks.filter((t) => t.done).length,
-    total: project.tasks.length,
+    done: smallTasks.filter((task) => task.done).length,
+    total: smallTasks.length,
   };
+}
+
+export function getTaskProgress(
+  tasks: Task[],
+  parentTaskId: string | null,
+): number {
+  const { done, total } = getSmallTaskCounts(tasks, parentTaskId);
+  if (total === 0) return 0;
+  return Math.round((done / total) * 100);
+}
+
+function isDescendantOf(
+  tasks: Task[],
+  task: Task,
+  ancestorTaskId: string,
+): boolean {
+  let currentParentId = task.parentTaskId;
+  while (currentParentId) {
+    if (currentParentId === ancestorTaskId) return true;
+    currentParentId = findTaskById(tasks, currentParentId)?.parentTaskId ?? null;
+  }
+  return false;
 }
 
 /**

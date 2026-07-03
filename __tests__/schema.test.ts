@@ -68,6 +68,8 @@ describe("memberSchema", () => {
 describe("taskSchema", () => {
   const baseTask = {
     id: "t1",
+    parentTaskId: null,
+    level: "large",
     title: "要件定義",
     done: false,
     dueDate: "2026-07-01",
@@ -75,7 +77,7 @@ describe("taskSchema", () => {
     memo: "",
   };
 
-  it("5項目すべて揃っていれば成功", () => {
+  it("階層フィールドを含む項目が揃っていれば成功", () => {
     expect(taskSchema.safeParse(baseTask).success).toBe(true);
   });
 
@@ -96,7 +98,6 @@ describe("projectSchema", () => {
   const baseProject = {
     id: "pr1",
     name: "基幹システムリプレイス",
-    categoryId: "cat1",
     status: "inProgress",
     deadline: "2026-07-10",
     tasks: [],

@@ -9,7 +9,7 @@
  * プロジェクトが呼び出し元の組織に属するかを確認したうえでコピーする。
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { projects, tasks, type TaskRowDb } from "@/db/schema";
@@ -43,6 +43,34 @@ async function resolveProjectOrgId(
   return row ? orgId : null;
 }
 
+async function getTaskRowById(
+  orgId: string,
+  id: string,
+): Promise<TaskRowDb | null> {
+  const [row] = await db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.id, id), eq(tasks.orgId, orgId)));
+  return row ?? null;
+}
+
+async function isValidTaskPlacement(
+  orgId: string,
+  projectId: string,
+  level: Task["level"],
+  parentTaskId: string | null,
+  taskId?: string,
+): Promise<boolean> {
+  if (level === "large") return parentTaskId === null;
+  if (!parentTaskId) return false;
+  if (parentTaskId === taskId) return false;
+
+  const parent = await getTaskRowById(orgId, parentTaskId);
+  if (!parent || parent.projectId !== projectId) return false;
+  if (level === "medium") return parent.level === "large";
+  return parent.level === "large" || parent.level === "medium";
+}
+
 export async function createTask(
   orgId: string,
   projectId: string,
@@ -59,6 +87,16 @@ export async function createTask(
 ): Promise<Task | null> {
   const resolvedOrgId = await resolveProjectOrgId(orgId, projectId);
   if (!resolvedOrgId) return null;
+  const level = input.level ?? "small";
+  const parentTaskId = input.parentTaskId ?? null;
+  const validPlacement = await isValidTaskPlacement(
+    orgId,
+    projectId,
+    level,
+    parentTaskId,
+    input.id,
+  );
+  if (!validPlacement) return null;
 
   const [{ maxSort }] = await db
     .select({ maxSort: sql<number>`coalesce(max(${tasks.sortOrder}), -1)` })
@@ -70,8 +108,8 @@ export async function createTask(
     .values({
       id: input.id,
       projectId,
-      parentTaskId: input.parentTaskId ?? null,
-      level: input.level ?? "small",
+      parentTaskId,
+      level,
       orgId: resolvedOrgId,
       title: input.title,
       done: input.done ?? false,
@@ -97,6 +135,21 @@ export async function updateTask(
     memo: string;
   }>,
 ): Promise<Task | null> {
+  const existing = await getTaskRowById(orgId, id);
+  if (!existing) return null;
+
+  const nextLevel = patch.level ?? existing.level;
+  const nextParentTaskId =
+    patch.parentTaskId !== undefined ? patch.parentTaskId : existing.parentTaskId;
+  const validPlacement = await isValidTaskPlacement(
+    orgId,
+    existing.projectId,
+    nextLevel,
+    nextParentTaskId,
+    id,
+  );
+  if (!validPlacement) return null;
+
   const [row] = await db
     .update(tasks)
     .set(patch)
@@ -109,17 +162,32 @@ export async function getTaskById(
   orgId: string,
   id: string,
 ): Promise<Task | null> {
-  const [row] = await db
-    .select()
-    .from(tasks)
-    .where(and(eq(tasks.id, id), eq(tasks.orgId, orgId)));
+  const row = await getTaskRowById(orgId, id);
   return row ? toTask(row) : null;
 }
 
 export async function deleteTask(orgId: string, id: string): Promise<boolean> {
+  const allRows = await db.select().from(tasks).where(eq(tasks.orgId, orgId));
+  const descendants = collectDescendantIds(allRows, id);
   const deleted = await db
     .delete(tasks)
-    .where(and(eq(tasks.id, id), eq(tasks.orgId, orgId)))
+    .where(and(inArray(tasks.id, [id, ...descendants]), eq(tasks.orgId, orgId)))
     .returning({ id: tasks.id });
   return deleted.length > 0;
+}
+
+function collectDescendantIds(rows: TaskRowDb[], parentId: string): string[] {
+  const result: string[] = [];
+  const queue = [parentId];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    for (const row of rows) {
+      if (row.parentTaskId === current) {
+        result.push(row.id);
+        queue.push(row.id);
+      }
+    }
+  }
+  return result;
 }

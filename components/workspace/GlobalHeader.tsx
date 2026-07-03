@@ -4,16 +4,14 @@ import { useState } from "react";
 import { KeyRound, LogOut, Settings, User } from "lucide-react";
 import { useClerk, useUser } from "@clerk/nextjs";
 
-import { type Category, type MainView } from "@/lib/schema";
+import { type MainView } from "@/lib/schema";
 import { MAIN_VIEW_LABEL } from "@/lib/labels";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Breadcrumb,
   BreadcrumbItem,
-  BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
@@ -37,13 +35,7 @@ import { OrgSwitcher } from "@/components/workspace/OrgSwitcher";
 import { SettingsDialogContent } from "@/components/workspace/SettingsDialog";
 
 type GlobalHeaderProps = {
-  categoryName: string;
   projectName: string;
-  categories: Category[];
-  onAddCategory: (name: string) => void;
-  onDeleteCategory: (categoryId: string) => void;
-  /** カテゴリ削除はOwner/Adminのみ許可する（§6決定）。 */
-  canDeleteCategory: boolean;
   mainView: MainView;
   onMainViewChange: (view: MainView) => void;
 };
@@ -123,12 +115,7 @@ function UserMenu() {
 }
 
 export function GlobalHeader({
-  categoryName,
   projectName,
-  categories,
-  onAddCategory,
-  onDeleteCategory,
-  canDeleteCategory,
   mainView,
   onMainViewChange,
 }: GlobalHeaderProps) {
@@ -157,13 +144,9 @@ export function GlobalHeader({
           aria-label="パンくず"
         >
           <BreadcrumbList className="flex-nowrap text-[11px]">
-            <BreadcrumbItem className="shrink-0">
-              <BreadcrumbLink>{categoryName}</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
             <BreadcrumbItem className="min-w-0">
               <BreadcrumbPage className="truncate font-medium">
-                {projectName}
+                {projectName || "プロジェクト未選択"}
               </BreadcrumbPage>
             </BreadcrumbItem>
           </BreadcrumbList>
@@ -192,12 +175,7 @@ export function GlobalHeader({
           />
           <TooltipContent side="bottom">ワークスペース設定</TooltipContent>
         </Tooltip>
-        <SettingsDialogContent
-          categories={categories}
-          onAddCategory={onAddCategory}
-          onDeleteCategory={onDeleteCategory}
-          canDeleteCategory={canDeleteCategory}
-        />
+        <SettingsDialogContent />
       </Dialog>
 
       <UserMenu />

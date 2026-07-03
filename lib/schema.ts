@@ -88,11 +88,6 @@ export type Task = z.infer<typeof taskSchema>;
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string(),
-  /**
-   * @deprecated カテゴリ廃止に伴い新モデルでは使わない。4-Cで呼び出し側を切り替える
-   * まで、旧JSON/旧UI互換のためだけに許容する。
-   */
-  categoryId: z.string().optional().default(""),
   status: projectStatusKeySchema,
   deadline: z.string(),
   tasks: z.array(taskSchema),
@@ -138,9 +133,10 @@ export type DeadlineRisk = "overdue" | "dueSoon" | "onTrack" | "none";
 export type ProjectRow = {
   id: string;
   name: string;
-  progress: number;
   deadline: string;
   deadlineRisk: DeadlineRisk;
+  doneCount: number;
+  totalCount: number;
 };
 
 /** Pane 2 のステータス別グループ表示単位。空ステータスも含め常に 4 グループ表示する。 */

@@ -61,7 +61,6 @@ describe("workspace-client (fetch wrapper)", () => {
         JSON.stringify({
           id: "p-1",
           name: "新プロジェクト",
-          categoryId: "cat-1",
           status: "planning",
           deadline: "",
           tasks: [],

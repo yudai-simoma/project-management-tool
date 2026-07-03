@@ -11,7 +11,6 @@ import { DEADLINE_RISK_LABEL } from "@/lib/labels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InlineTextField } from "@/components/primitives";
-import { Progress } from "@/components/ui/progress";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,7 +23,7 @@ import {
  *
  * 採用管理サンプルの `SortableCandidateRow` と同じ dnd-kit 構成
  * （行全体クリック = 選択、左端のグリップのみ drag listener）を踏襲する。
- * 表示内容は「プロジェクト名 + 期限バッジ」の 1 行目、「進捗率バー + 数値」の 2 行目。
+ * 表示内容は「プロジェクト名 + 期限バッジ」の 1 行目、「完了数」の 2 行目。
  */
 export function SortableProjectRow({
   project,
@@ -108,9 +107,8 @@ export function SortableProjectRow({
           />
         </div>
         <div className="flex items-center gap-2 pl-7">
-          <Progress value={project.progress} className="h-1.5 flex-1" />
-          <span className="w-9 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-            {project.progress}%
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {project.doneCount}/{project.totalCount} 完了
           </span>
         </div>
       </div>

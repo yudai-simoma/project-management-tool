@@ -24,12 +24,7 @@ vi.mock("@/components/workspace/OrgSwitcher", () => ({
 import { GlobalHeader } from "@/components/workspace/GlobalHeader";
 
 const baseProps = {
-  categoryName: "プロダクト開発",
   projectName: "モバイルアプリ新機能開発",
-  categories: [],
-  onAddCategory: vi.fn(),
-  onDeleteCategory: vi.fn(),
-  canDeleteCategory: true,
   mainView: "workspace" as const,
   onMainViewChange: vi.fn(),
 };

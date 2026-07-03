@@ -25,7 +25,6 @@ function toProject(row: ProjectRowDb, taskRows: TaskRowDb[]): Project {
   return {
     id: row.id,
     name: row.name,
-    categoryId: "",
     status: row.status,
     deadline: row.deadline,
     tasks: taskRows.map(toTask),
@@ -68,8 +67,6 @@ export async function createProject(
   input: {
     id: string;
     name: string;
-    /** @deprecated カテゴリ廃止後は保存しない。4-CまでのAPI互換用。 */
-    categoryId: string;
     status: ProjectStatusKey;
     deadline: string;
   },
@@ -100,8 +97,6 @@ export async function updateProject(
   id: string,
   patch: Partial<{
     name: string;
-    /** @deprecated カテゴリ廃止後は保存しない。4-CまでのAPI互換用。 */
-    categoryId: string;
     status: ProjectStatusKey;
     deadline: string;
   }>,
@@ -164,12 +159,15 @@ export async function deleteProject(
  */
 export async function reorderProjects(
   orgId: string,
-  items: { id: string; status: ProjectStatusKey; sortOrder: number }[],
+  items: { id: string; status?: ProjectStatusKey; sortOrder: number }[],
 ): Promise<void> {
   for (const item of items) {
     await db
       .update(projects)
-      .set({ status: item.status, sortOrder: item.sortOrder })
+      .set({
+        sortOrder: item.sortOrder,
+        ...(item.status !== undefined && { status: item.status }),
+      })
       .where(and(eq(projects.id, item.id), eq(projects.orgId, orgId)));
   }
 }

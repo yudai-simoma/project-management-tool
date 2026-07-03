@@ -1,69 +1,87 @@
 "use client";
 
-import { useState } from "react";
-import { Plus } from "lucide-react";
+import { useMemo, useState } from "react";
+import { MoreHorizontal, Plus, Search, Trash2 } from "lucide-react";
 
-import { type Category, type Project } from "@/lib/schema";
-import { STATUS_LABELS } from "@/lib/labels";
-import { cn } from "@/lib/utils";
+import { type Project } from "@/lib/schema";
+import {
+  deriveDeadlineRisk,
+  getSmallTaskCounts,
+} from "@/lib/computed/projects";
+import { DEADLINE_RISK_LABEL } from "@/lib/labels";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   Sidebar,
   SidebarContent,
-  SidebarGroup,
-  SidebarGroupAction,
-  SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { InlineTextField } from "@/components/primitives";
 import { Pane1Toggle } from "@/components/workspace/Pane1Toggle";
 import { AddItemDialog } from "@/components/workspace/AddItemDialog";
+import { DeleteConfirmDialog } from "@/components/workspace/DeleteConfirmDialog";
+import { MANAGE_ROLE_TOOLTIP } from "@/lib/labels";
 
 type CategoryPaneProps = {
   workspaceName: string;
-  categories: Category[];
   projects: Project[];
-  selectedCategoryId: string | null;
   selectedProjectId: string;
-  onSelectCategory: (categoryId: string | null) => void;
   onSelectProject: (projectId: string) => void;
-  onAddProject: (categoryId: string, name: string) => void;
-  onUpdateCategoryName: (categoryId: string, name: string) => void;
+  onAddProject: (name: string) => void;
+  onUpdateProjectName: (projectId: string, name: string) => void;
+  onDeleteProject: (projectId: string) => void;
+  canDeleteProject: boolean;
 };
 
-/**
- * Pane 1: プロジェクトカテゴリ → プロジェクトの階層 Sidebar。
- *
- * 社内のプロジェクト管理ツールでは外部クライアントではなく、社内の分類軸
- * （カテゴリ）でプロジェクトをグルーピングする。カテゴリの選択が実際に
- * Pane 2（プロジェクト一覧）を絞り込む。
- *
- * - カテゴリ名クリック: そのカテゴリで Pane 2 を絞り込む（再クリックで解除）
- * - 「すべてのカテゴリ」: 絞り込み解除
- * - プロジェクト（leaf）クリック: そのプロジェクトを選択し、Pane 3 を開く
- *   （所属カテゴリでの絞り込みも同時に有効になる）
- */
 export function CategoryPane({
   workspaceName,
-  categories,
   projects,
-  selectedCategoryId,
   selectedProjectId,
-  onSelectCategory,
   onSelectProject,
   onAddProject,
-  onUpdateCategoryName,
+  onUpdateProjectName,
+  onDeleteProject,
+  canDeleteProject,
 }: CategoryPaneProps) {
-  const [addDialogCategoryId, setAddDialogCategoryId] = useState<string | null>(
-    null,
-  );
+  const [query, setQuery] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
 
-  const addDialogCategory = categories.find(
-    (c) => c.id === addDialogCategoryId,
-  );
+  const visibleProjects = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase("ja-JP");
+    const filtered = normalizedQuery
+      ? projects.filter((project) =>
+          project.name.toLocaleLowerCase("ja-JP").includes(normalizedQuery),
+        )
+      : projects;
+
+    return [...filtered].sort((a, b) => {
+      const aCounts = getSmallTaskCounts(a.tasks, null);
+      const bCounts = getSmallTaskCounts(b.tasks, null);
+      const aDone = aCounts.total > 0 && aCounts.done === aCounts.total;
+      const bDone = bCounts.total > 0 && bCounts.done === bCounts.total;
+      if (aDone !== bDone) return aDone ? 1 : -1;
+      const aDeadline = a.deadline || "9999-12-31";
+      const bDeadline = b.deadline || "9999-12-31";
+      return aDeadline.localeCompare(bDeadline);
+    });
+  }, [projects, query]);
 
   return (
     <>
@@ -76,108 +94,177 @@ export function CategoryPane({
             <h2 className="truncate text-sm font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden">
               {workspaceName}
             </h2>
-            <Pane1Toggle />
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => setAddOpen(true)}
+                aria-label="プロジェクトを追加"
+                className="group-data-[collapsible=icon]:hidden"
+              >
+                <Plus />
+              </Button>
+              <Pane1Toggle />
+            </div>
           </div>
         </SidebarHeader>
 
-        <SidebarContent className="px-1 py-3 group-data-[collapsible=icon]:hidden">
-          <SidebarMenu className="mb-2 px-1">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                isActive={selectedCategoryId === null}
-                onClick={() => onSelectCategory(null)}
-              >
-                <span className="truncate">すべてのカテゴリ</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+        <SidebarContent className="px-2 py-3 group-data-[collapsible=icon]:hidden">
+          <div className="flex flex-col gap-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                aria-label="プロジェクトを検索"
+                placeholder="プロジェクトを検索"
+                className="pl-8"
+              />
+            </div>
 
-          {categories.map((category) => {
-            const categoryProjects = projects.filter(
-              (p) => p.categoryId === category.id,
-            );
-            const isCategoryActive = selectedCategoryId === category.id;
-
-            return (
-              <SidebarGroup key={category.id} className="px-1">
-                <div
-                  className={cn(
-                    "flex h-8 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-xs font-semibold tracking-wide uppercase transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                    isCategoryActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-                  )}
-                >
-                  <InlineTextField
-                    key={`${category.id}:${category.name}`}
-                    value={category.name}
-                    onSave={(name) => onUpdateCategoryName(category.id, name)}
-                    ariaLabel={`${category.name} のカテゴリ名`}
-                    className="h-7 flex-1"
-                    onFocus={() => {
-                      if (!isCategoryActive) onSelectCategory(category.id);
-                    }}
-                  />
-                  <Badge variant="secondary" size="xs">
-                    {categoryProjects.length}
-                  </Badge>
-                </div>
-                <SidebarGroupAction
-                  title={`${category.name} にプロジェクトを追加`}
-                  onClick={() => setAddDialogCategoryId(category.id)}
-                  className="w-6 rounded-[min(var(--radius-md),10px)] text-muted-foreground hover:bg-muted hover:text-foreground [&>svg]:size-3"
-                >
-                  <Plus />
-                  <span className="sr-only">
-                    {category.name} にプロジェクトを追加
-                  </span>
-                </SidebarGroupAction>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {categoryProjects.map((project) => {
-                      const active = project.id === selectedProjectId;
-                      return (
-                        <SidebarMenuItem key={project.id}>
-                          <SidebarMenuButton
-                            tooltip={project.name}
-                            isActive={active}
-                            aria-current={active ? "page" : undefined}
-                            onClick={() => onSelectProject(project.id)}
-                          >
-                            <span className="truncate">{project.name}</span>
-                            <Badge
-                              variant="outline"
-                              size="xs"
-                              className="ml-auto shrink-0"
+            <SidebarMenu>
+              {visibleProjects.map((project) => {
+                const active = project.id === selectedProjectId;
+                const counts = getSmallTaskCounts(project.tasks, null);
+                return (
+                  <SidebarMenuItem key={project.id}>
+                    <SidebarMenuButton
+                      render={<div />}
+                      tooltip={project.name}
+                      isActive={active}
+                      aria-current={active ? "page" : undefined}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onSelectProject(project.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onSelectProject(project.id);
+                        }
+                      }}
+                      className="h-auto items-start py-2"
+                    >
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <InlineTextField
+                          key={`${project.id}:${project.name}`}
+                          value={project.name}
+                          onSave={(name) =>
+                            onUpdateProjectName(project.id, name)
+                          }
+                          ariaLabel={`${project.name} のプロジェクト名`}
+                          className="h-7"
+                          onFocus={() => onSelectProject(project.id)}
+                          onClick={(event) => event.stopPropagation()}
+                        />
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <DeadlineBadge deadline={project.deadline} />
+                          <Badge variant="secondary" size="xs">
+                            {counts.done}/{counts.total}
+                          </Badge>
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={(event) => event.stopPropagation()}
+                              aria-label={`${project.name} の操作`}
+                              className="shrink-0 text-muted-foreground hover:text-foreground"
                             >
-                              {STATUS_LABELS[project.status]}
-                            </Badge>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            );
-          })}
+                              <MoreHorizontal />
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent side="right" align="start">
+                          <DropdownMenuGroup>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    disabled={!canDeleteProject}
+                                    onClick={() => setDeleteTarget(project)}
+                                  >
+                                    <Trash2 />
+                                    削除
+                                  </DropdownMenuItem>
+                                }
+                              />
+                              {!canDeleteProject && (
+                                <TooltipContent side="right">
+                                  {MANAGE_ROLE_TOOLTIP}
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+
+            {visibleProjects.length === 0 && (
+              <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                プロジェクトがありません
+              </p>
+            )}
+          </div>
         </SidebarContent>
       </Sidebar>
 
-      {addDialogCategory && (
-        <AddItemDialog
-          open={addDialogCategoryId !== null}
-          onOpenChange={(open) => {
-            if (!open) setAddDialogCategoryId(null);
-          }}
-          title="プロジェクトを追加"
-          description={`${addDialogCategory.name} に新しいプロジェクトを追加します`}
-          fieldLabel="プロジェクト名"
-          fieldId="project-name"
-          placeholder="例: 基幹システムリプレイス"
-          onAdd={(name) => onAddProject(addDialogCategory.id, name)}
-        />
-      )}
+      <AddItemDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title="プロジェクトを追加"
+        description="新しいプロジェクトを追加します"
+        fieldLabel="プロジェクト名"
+        fieldId="project-name"
+        placeholder="例: 基幹システムリプレイス"
+        onAdd={onAddProject}
+      />
+
+      <DeleteConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="プロジェクトを削除しますか？"
+        itemName={deleteTarget?.name ?? ""}
+        description={`「${deleteTarget?.name ?? ""}」を削除します。配下のタスクも含めて完全に削除され、元に戻せません。`}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          onDeleteProject(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+      />
     </>
+  );
+}
+
+function DeadlineBadge({ deadline }: { deadline: string }) {
+  const risk = deriveDeadlineRisk(deadline);
+  if (risk === "none") {
+    return (
+      <Badge variant="outline" size="xs" className="shrink-0">
+        期限未設定
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge
+      variant={risk === "overdue" ? "destructive" : "outline"}
+      size="xs"
+      className="shrink-0"
+      aria-label={DEADLINE_RISK_LABEL[risk]}
+    >
+      {deadline}
+    </Badge>
   );
 }

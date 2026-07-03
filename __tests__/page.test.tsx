@@ -1,24 +1,30 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-import type { Category, Member, Project } from "@/lib/schema";
+import type { Member, Project } from "@/lib/schema";
 
-const categories: Category[] = [{ id: "cat-1", name: "プロダクト開発" }];
 const members: Member[] = [{ id: "m-1", name: "佐藤 健太", role: "owner" }];
 const projects: Project[] = [
   {
     id: "p-1",
     name: "モバイルアプリ新機能開発",
-    categoryId: "cat-1",
     status: "inProgress",
     deadline: "",
-    tasks: [],
+    tasks: [
+      {
+        id: "large-1",
+        parentTaskId: null,
+        level: "large",
+        title: "要件定義",
+        done: false,
+        dueDate: "",
+        assigneeId: "",
+        memo: "",
+      },
+    ],
   },
 ];
 
-vi.mock("@/db/repositories/categories", () => ({
-  listCategories: vi.fn(async () => categories),
-}));
 vi.mock("@/lib/clerk/org-members", () => ({
   listActiveMembers: vi.fn(async () => members),
 }));
@@ -72,11 +78,13 @@ describe("Page", () => {
     // ワークスペース名（Pane 1 ヘッダー、data/workspace.json 由来）
     expect(screen.getByText("プロジェクト管理")).toBeInTheDocument();
 
-    // カテゴリ名（Pane 1 の InlineTextField）
-    expect(screen.getByDisplayValue("プロダクト開発")).toBeInTheDocument();
+    // プロジェクト名（Pane 1 の InlineTextField）
+    expect(
+      screen.getByDisplayValue("モバイルアプリ新機能開発"),
+    ).toBeInTheDocument();
 
-    // プロジェクト一覧の見出し（Pane 2）
-    expect(screen.getByText("プロジェクト一覧")).toBeInTheDocument();
+    // 大項目タスク一覧の見出し（Pane 2）
+    expect(screen.getByText("大項目タスク")).toBeInTheDocument();
   });
 
   it("組織未所属（orgId 無し）の場合は /onboarding へリダイレクトする（middleware をすり抜けた場合の防御）", async () => {

@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 
 import { Workspace } from "@/components/workspace/Workspace";
 import workspaceData from "@/data/workspace.json";
-import { listCategories } from "@/db/repositories/categories";
 import { listProjectsWithTasks } from "@/db/repositories/projects";
 import { listActiveMembers } from "@/lib/clerk/org-members";
 import { workspaceSchema } from "@/lib/schema";
@@ -26,19 +25,17 @@ export default async function Page() {
     );
   }
 
-  // Category/Project(+Task) は組織（orgId）でスコープしたうえで Neon(DB) から直接取得する
+  // Project(+Task) は組織（orgId）でスコープしたうえで Neon(DB) から直接取得する
   // （Server Component）。Member はセクション4で Clerk Organizations API に完全移行した
   // ため、DBではなく Clerk から組織所属メンバー（承諾済みのみ）を取得する。ワークスペース名・
   // アイコンはまだDB化していないため data/workspace.json のまま。
-  const [categories, members, projects] = await Promise.all([
-    listCategories(orgId),
+  const [members, projects] = await Promise.all([
     listActiveMembers(orgId),
     listProjectsWithTasks(orgId),
   ]);
 
   return (
     <Workspace
-      initialCategories={categories}
       initialMembers={members}
       initialProjects={projects}
       workspace={wsResult.data}

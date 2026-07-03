@@ -33,7 +33,6 @@ import { PATCH as REORDER } from "@/app/api/projects/reorder/route";
 const sampleProject = {
   id: "p-1",
   name: "モバイルアプリ新機能開発",
-  categoryId: "cat-1",
   status: "inProgress" as const,
   deadline: "",
   tasks: [],
@@ -66,7 +65,6 @@ describe("POST /api/projects", () => {
         body: JSON.stringify({
           id: "p-1",
           name: "モバイルアプリ新機能開発",
-          categoryId: "cat-1",
         }),
       }),
     );
@@ -76,17 +74,16 @@ describe("POST /api/projects", () => {
     expect(projectsRepo.createProject).toHaveBeenCalledWith("org_test", {
       id: "p-1",
       name: "モバイルアプリ新機能開発",
-      categoryId: "cat-1",
       status: "planning",
       deadline: "",
     });
   });
 
-  it("categoryId が無いと400を返す", async () => {
+  it("name が無いと400を返す", async () => {
     const res = await POST(
       new Request("http://localhost/api/projects", {
         method: "POST",
-        body: JSON.stringify({ id: "p-1", name: "無効なプロジェクト" }),
+        body: JSON.stringify({ id: "p-1" }),
       }),
     );
 

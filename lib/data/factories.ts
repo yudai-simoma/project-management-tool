@@ -20,17 +20,15 @@ export function createMinimalTask(title: string): Task {
 
 /**
  * プロジェクト追加時に Workspace が生成する最小 Project。
- * `categoryId` は追加元の Pane 1 グループから、`status` は追加先のカンバン列から渡される。
+ * カテゴリ廃止後は Pane 1 のフラットなプロジェクト一覧から追加する。
  */
 export function createEmptyProject(
-  categoryId: string,
   name: string,
   status: ProjectStatusKey = "planning",
 ): Project {
   return {
     id: `p-${crypto.randomUUID()}`,
     name,
-    categoryId,
     status,
     deadline: "",
     tasks: [],

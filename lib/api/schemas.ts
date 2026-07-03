@@ -43,7 +43,6 @@ export const updateMemberRoleSchema = z.object({
 export const createProjectSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  categoryId: z.string().min(1),
   status: projectStatusKeySchema.optional().default("planning"),
   deadline: z.string().optional().default(""),
 });
@@ -51,7 +50,6 @@ export const createProjectSchema = z.object({
 export const updateProjectSchema = z
   .object({
     name: z.string().min(1).optional(),
-    categoryId: z.string().min(1).optional(),
     status: projectStatusKeySchema.optional(),
     deadline: z.string().optional(),
   })
@@ -64,7 +62,7 @@ export const reorderProjectsSchema = z.object({
     .array(
       z.object({
         id: z.string().min(1),
-        status: projectStatusKeySchema,
+        status: projectStatusKeySchema.optional(),
         sortOrder: z.number().int().min(0),
       }),
     )
