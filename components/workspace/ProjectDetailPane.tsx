@@ -4,15 +4,16 @@
  * Pane 4: プロジェクト詳細パネル（タブ切替式）。
  *
  * 「詳細」タブ = 選択中タスクの自由編集（タイトル・完了・期限・担当者・メモ、
- * 削除は手動のみ）、「AIアシスタント」タブ = 壁打ちチャットでタスクの追加・完了を
- * 実行できるダミー応答チャット（実Gemini API呼び出しは次フェーズ）。
+ * 削除は手動のみ）、「AIアシスタント」タブ = 壁打ちチャットでタスクの追加・編集・完了を
+ * 実行できる（実Gemini API呼び出し、tool calling。削除はAIから実行不可、手動のみ）。
  *
  * 規律:
  *   - components/primitives/ の Inline* primitive を使う（shadcn 標準フォーム）
  *   - タスク切替時の state リセットは `key` 再マウントで
  *   - Pane 4 の開閉制御（Pane4Toggle）は既存パターンをそのまま流用
  *
- * `docs/mock-implementation-plan.md` §6.2 の設計方針に基づく実装。
+ * `docs/mock-implementation-plan.md` §6.2、`docs/backend-implementation-plan.md`
+ * セクション5 の設計方針に基づく実装。
  */
 
 import { useEffect, useState } from "react";
@@ -30,12 +31,8 @@ import {
   type SelectedDetail,
   type Pane4Tab,
 } from "@/lib/schema";
-import {
-  PANE4_SECTION_IDS,
-  AI_CHAT_GREETING,
-  AI_CHAT_FALLBACK,
-  buildAiTaskProposalTitles,
-} from "@/lib/labels";
+import { PANE4_SECTION_IDS, AI_CHAT_GREETING, AI_CHAT_ERROR_MESSAGE } from "@/lib/labels";
+import { sendAiChatMessage } from "@/lib/api/ai-client";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -280,11 +277,24 @@ function TaskProposalBubble({
 
 function AiAssistantPanel({
   project,
+  categoryName,
+  members,
   onAddTask,
+  onUpdateTaskField,
   onToggleTaskDone,
 }: {
   project: Project;
-  onAddTask: (title: string) => void;
+  categoryName: string;
+  members: Member[];
+  onAddTask: (
+    title: string,
+    extra?: Partial<Pick<Task, "dueDate" | "assigneeId" | "memo">>,
+  ) => void;
+  onUpdateTaskField: (
+    taskId: string,
+    field: EditableTaskKey,
+    value: string,
+  ) => void;
   onToggleTaskDone: (taskId: string) => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
@@ -296,70 +306,93 @@ function AiAssistantPanel({
     },
   ]);
   const [input, setInput] = useState("");
+  const [pending, setPending] = useState(false);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || pending) return;
 
     const userMessage: ChatMessage = {
-      id: `u-${Date.now()}`,
+      id: `u-${crypto.randomUUID()}`,
       role: "user",
       kind: "text",
       content: text,
     };
-
-    // 「〇〇のタスクを洗い出して」: 複数タスクを一括提案する（優先して判定する）。
-    const surveyMatch = text.match(/^(?:(.+?)の)?タスクを?洗い出/);
-    // 「〇〇を追加して」「〇〇を完了にして」: 単発の即時実行パターン（従来通り）。
-    const addMatch = text.match(/^(.+?)を追加(?:して)?$/);
-    const doneMatch = text.match(/^(.+?)を完了(?:に)?(?:して)?$/);
-
-    if (surveyMatch) {
-      const topic = surveyMatch[1]?.trim();
-      const titles = buildAiTaskProposalTitles(topic);
-      const proposalMessage: ChatMessage = {
-        id: `a-${Date.now()}`,
-        role: "assistant",
-        kind: "taskProposal",
-        intro: topic
-          ? `「${topic}」に関するタスクを${titles.length}件提案します。追加するものを選んでください。`
-          : `タスクを${titles.length}件提案します。追加するものを選んでください。`,
-        proposals: titles.map((title, idx) => ({
-          id: `p-${Date.now()}-${idx}`,
-          title,
-          checked: true,
-        })),
-        confirmed: false,
-      };
-      setMessages((prev) => [...prev, userMessage, proposalMessage]);
-      setInput("");
-      return;
-    }
-
-    let replyContent = AI_CHAT_FALLBACK;
-    if (addMatch?.[1]?.trim()) {
-      const title = addMatch[1].trim();
-      onAddTask(title);
-      replyContent = `「${title}」を追加しました。`;
-    } else if (doneMatch?.[1]?.trim()) {
-      const name = doneMatch[1].trim();
-      const target = project.tasks.find((t) => t.title.includes(name));
-      if (target) {
-        if (!target.done) onToggleTaskDone(target.id);
-        replyContent = `「${target.title}」を完了にしました。`;
-      } else {
-        replyContent = `「${name}」に一致するタスクが見つかりませんでした。`;
-      }
-    }
-
-    const assistantMessage: ChatMessage = {
-      id: `a-${Date.now()}`,
-      role: "assistant",
-      kind: "text",
-      content: replyContent,
-    };
-    setMessages((prev) => [...prev, userMessage, assistantMessage]);
+    const history = messages.map((m) => ({
+      role: m.role,
+      content: m.kind === "text" ? m.content : `(タスク提案: ${m.intro})`,
+    }));
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setPending(true);
+
+    try {
+      const res = await sendAiChatMessage({
+        project,
+        categoryName,
+        members,
+        history,
+        message: text,
+      });
+
+      const replyMessage: ChatMessage =
+        res.reply.kind === "taskProposal"
+          ? {
+              id: `a-${crypto.randomUUID()}`,
+              role: "assistant",
+              kind: "taskProposal",
+              intro: res.reply.intro,
+              proposals: res.reply.titles.map((title) => ({
+                id: crypto.randomUUID(),
+                title,
+                checked: true,
+              })),
+              confirmed: false,
+            }
+          : {
+              id: `a-${crypto.randomUUID()}`,
+              role: "assistant",
+              kind: "text",
+              content: res.reply.content,
+            };
+      setMessages((prev) => [...prev, replyMessage]);
+
+      // 実行アクション（追加・編集・完了）は、既存の楽観的更新ハンドラにそのまま委譲する
+      // （チャット経由の変更だけ別の永続化経路にしない、`lib/ai/tools.ts` 参照）。
+      for (const action of res.actions) {
+        if (action.type === "addTask") {
+          onAddTask(action.title, {
+            dueDate: action.dueDate,
+            assigneeId: action.assigneeId,
+            memo: action.memo,
+          });
+        } else if (action.type === "updateTask") {
+          for (const [field, value] of Object.entries(action.patch)) {
+            if (value !== undefined) {
+              onUpdateTaskField(action.taskId, field as EditableTaskKey, value);
+            }
+          }
+        } else if (action.type === "completeTask") {
+          const target = project.tasks.find((t) => t.id === action.taskId);
+          if (target && target.done !== action.done) {
+            onToggleTaskDone(action.taskId);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[ai] チャットの送信に失敗しました", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `a-${crypto.randomUUID()}`,
+          role: "assistant",
+          kind: "text",
+          content: AI_CHAT_ERROR_MESSAGE,
+        },
+      ]);
+    } finally {
+      setPending(false);
+    }
   };
 
   // 提案メッセージ内のチェックボックス切替。
@@ -387,7 +420,7 @@ function AiAssistantPanel({
     const checkedTitles = target.proposals
       .filter((p) => p.checked)
       .map((p) => p.title);
-    checkedTitles.forEach(onAddTask);
+    checkedTitles.forEach((title) => onAddTask(title));
 
     const resultMessage: ChatMessage = {
       // messageId は提案メッセージごとに一意なので、それ由来の固定文字列で
@@ -424,6 +457,13 @@ function AiAssistantPanel({
               <ChatBubble key={m.id} message={m} />
             ),
           )}
+          {pending && (
+            <div className="flex justify-start">
+              <p className="max-w-[85%] rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+                考え中…
+              </p>
+            </div>
+          )}
         </div>
       </ScrollArea>
       <div className="flex shrink-0 items-center gap-2 border-t border-border p-3">
@@ -435,13 +475,14 @@ function AiAssistantPanel({
           }}
           placeholder="例:「タスクを洗い出して」"
           aria-label="AIアシスタントへのメッセージ"
+          disabled={pending}
           className="h-8 bg-card"
         />
         <Button
           type="button"
           size="icon-sm"
           onClick={handleSend}
-          disabled={!input.trim()}
+          disabled={!input.trim() || pending}
           aria-label="送信"
         >
           <Send />
@@ -456,6 +497,7 @@ function AiAssistantPanel({
 export function ProjectDetailPane({
   selectedProjectId,
   project,
+  categoryName,
   members,
   selectedDetail,
   scrollAnchor,
@@ -471,6 +513,7 @@ export function ProjectDetailPane({
 }: {
   selectedProjectId: string;
   project: Project;
+  categoryName: string;
   members: Member[];
   selectedDetail: SelectedDetail;
   scrollAnchor: string | null;
@@ -482,7 +525,10 @@ export function ProjectDetailPane({
   ) => void;
   onToggleTaskDone: (taskId: string) => void;
   onDeleteTask: (taskId: string) => void;
-  onAddTask: (title: string) => void;
+  onAddTask: (
+    title: string,
+    extra?: Partial<Pick<Task, "dueDate" | "assigneeId" | "memo">>,
+  ) => void;
   pane4Open: boolean;
   onTogglePane4: () => void;
   pane4Tab: Pane4Tab;
@@ -560,7 +606,10 @@ export function ProjectDetailPane({
             <AiAssistantPanel
               key={selectedProjectId}
               project={project}
+              categoryName={categoryName}
+              members={members}
               onAddTask={onAddTask}
+              onUpdateTaskField={onUpdateTaskField}
               onToggleTaskDone={onToggleTaskDone}
             />
           </TabsContent>

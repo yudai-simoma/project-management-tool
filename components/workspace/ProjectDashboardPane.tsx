@@ -11,7 +11,7 @@
  * `docs/mock-implementation-plan.md` §6.1 の設計方針に基づく実装。
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUpRight, ChevronDown, Plus, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -21,16 +21,9 @@ import {
   type Member,
   type SelectedDetail,
 } from "@/lib/schema";
-import {
-  PANE3_SECTION,
-  PANE4_SECTION_IDS,
-  AI_SUMMARY_TEMPLATES,
-} from "@/lib/labels";
-import {
-  getProjectProgress,
-  deriveDeadlineRisk,
-  getTaskCounts,
-} from "@/lib/computed/projects";
+import { PANE3_SECTION, PANE4_SECTION_IDS, AI_SUMMARY_ERROR_MESSAGE } from "@/lib/labels";
+import { fetchAiSummary } from "@/lib/api/ai-client";
+import { getProjectProgress, getTaskCounts } from "@/lib/computed/projects";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -136,20 +129,39 @@ function OverviewCard({
   );
 }
 
-// ===== Card: AI進捗サマリー（モック段階のダミーロジック、実LLM呼び出しなし） =====
+// ===== Card: AI進捗サマリー（実Gemini呼び出し） =====
 
-function AiSummaryCard({ project }: { project: Project }) {
-  const risk = deriveDeadlineRisk(project.deadline);
-  const templates = AI_SUMMARY_TEMPLATES[risk];
-  const [templateIndex, setTemplateIndex] = useState(0);
+type AiSummaryState =
+  | { status: "loading" }
+  | { status: "ready"; summary: string; source: "gemini" | "fallback" }
+  | { status: "error" };
 
-  const handleRefresh = () => {
-    if (templates.length <= 1) return;
-    setTemplateIndex((prev) => {
-      const next = Math.floor(Math.random() * (templates.length - 1));
-      return next >= prev ? next + 1 : next;
-    });
-  };
+function AiSummaryCard({
+  project,
+  categoryName,
+}: {
+  project: Project;
+  categoryName: string;
+}) {
+  const [state, setState] = useState<AiSummaryState>({ status: "loading" });
+  // 手動更新ボタン用。project/categoryName が変わらなくても Effect を再実行させる。
+  const [refreshNonce, setRefreshNonce] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAiSummary({ project, categoryName })
+      .then((res) => {
+        if (cancelled) return;
+        setState({ status: "ready", summary: res.summary, source: res.source });
+      })
+      .catch((error: unknown) => {
+        console.error("[ai] AI進捗サマリーの取得に失敗しました", error);
+        if (!cancelled) setState({ status: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project, categoryName, refreshNonce]);
 
   return (
     <Card>
@@ -160,18 +172,39 @@ function AiSummaryCard({ project }: { project: Project }) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            onClick={handleRefresh}
+            onClick={() => {
+              // ボタン押下（イベントハンドラ）起因の副作用なのでここで直接setStateする
+              // （Effect内での同期setStateはcascading renderを招くため避ける）。
+              setState({ status: "loading" });
+              setRefreshNonce((n) => n + 1);
+            }}
+            disabled={state.status === "loading"}
             aria-label="AI進捗サマリーを更新"
             className="text-muted-foreground hover:text-foreground"
           >
-            <RefreshCw />
+            <RefreshCw className={cn(state.status === "loading" && "animate-spin")} />
           </Button>
         </CardAction>
       </CardHeader>
       <CardContent>
-        <p className="text-sm leading-relaxed text-foreground/90">
-          {templates[templateIndex](project.name)}
-        </p>
+        {state.status === "loading" && (
+          <p className="text-sm text-muted-foreground">生成中…</p>
+        )}
+        {state.status === "error" && (
+          <p className="text-sm text-destructive">{AI_SUMMARY_ERROR_MESSAGE}</p>
+        )}
+        {state.status === "ready" && (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm leading-relaxed text-foreground/90">
+              {state.summary}
+            </p>
+            {state.source === "fallback" && (
+              <p className="text-xs text-muted-foreground">
+                Gemini APIキーを設定すると、実際のAIによる分析結果が表示されます。
+              </p>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -330,7 +363,11 @@ export function ProjectDashboardPane({
             onUpdateDeadline={onUpdateDeadline}
           />
 
-          <AiSummaryCard key={project.id} project={project} />
+          <AiSummaryCard
+            key={project.id}
+            project={project}
+            categoryName={categoryName}
+          />
 
           <TaskListCard
             tasks={project.tasks}

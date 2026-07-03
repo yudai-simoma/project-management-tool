@@ -33,7 +33,7 @@
 | 2   | Category/Project/Task/Member の CRUD API 化 + Workspace.tsx のAPI接続切替 | §1     | ✅ 完了    |
 | 3   | Clerk 導入（認証・組織・ロール）                                          | §2     | ✅ 完了    |
 | 4   | 組織メンバー管理の実装（Clerk Organizations経由）                         | §3     | ✅ 完了    |
-| 5   | AI実接続（Gemini + Vercel AI SDK、BYOKキー管理含む）                      | §2, §3 | ⬜ 未着手  |
+| 5   | AI実接続（Gemini + Vercel AI SDK、BYOKキー管理含む）                      | §2, §3 | ✅ 完了    |
 | 6   | ロールに基づく操作制限 + 仕上げ                                           | §3, §4 | ⬜ 未着手  |
 
 ```mermaid
@@ -503,6 +503,121 @@ docs/backend-implementation-plan.md のセクション5「AI実接続（Gemini +
 実APIキー無しで通るようにする）、docs/backend-implementation-plan.md のセクション5の
 ステータスを更新し、実装メモを追記してください。
 ```
+
+### 実装メモ（2026-07-04 完了）
+
+**モデル選定・設計判断（ユーザー確認なしで決定した箇所）**:
+
+- 使用モデルは `gemini-flash-latest`（無料枠の想定に合う最新Flash系列のエイリアス）を既定値とし、
+  `.env.local` の `GEMINI_MODEL_ID` で上書きできるようにした（`lib/ai/gemini.ts`）。特定バージョンを
+  決め打ちすると将来的に非推奨化されるリスクがあるため、エイリアスモデルIDを選んだ
+- **tool callingの`execute`はDB/APIを直接更新しない設計にした**（`lib/ai/tools.ts`）。
+  `addTask`/`updateTask`/`completeTask`は「実行してほしい操作」を表す`AiAction`を返すだけの
+  純粋関数とし、実際の永続化は`app/api/ai/chat`のレスポンスに含めた`actions`配列を
+  `AiAssistantPanel`が受け取り、§2で実装済みの楽観的更新ハンドラ（`onAddTask`/
+  `onUpdateTaskField`/`onToggleTaskDone`、いずれも`Workspace.tsx`）にそのまま委譲する形にした。
+  理由: 永続化の経路を「楽観的更新 → `app/api/**` Route Handler」の1本に保てる
+  （チャット経由の変更だけ別のDB書き込み経路になる事態を避けられる）ため。
+  この設計により、削除用のtoolを用意しないだけで「削除はAIから実行不可、手動のみ」
+  （`docs/mock-implementation-plan.md` §2.5）という制約が自然に守られる
+- **タスク洗い出し（`proposeTasks`ツール）も同様に非破壊**。`intro`と`titles`を返すだけで
+  `project.tasks`には一切反映せず、`AiAssistantPanel`が`TaskProposalBubble`（既存UI、変更なし）
+  としてチェックボックス付きで表示し、ユーザーが「選択したN件を追加」を押した時だけ
+  クライアント側で`onAddTask`をN回呼ぶ（§10のUI/UXをそのまま維持）
+- **APIキー未設定時のフォールバック**は、`app/api/ai/summary`・`app/api/ai/chat`の両方で
+  Gemini呼び出し自体を行わず、案内文言（`lib/labels.ts`の`AI_NO_API_KEY_MESSAGE`）を
+  `summary`／`reply.content`としてそのまま返す設計にした。フロント側で「fallbackかどうか」の
+  特別分岐をほぼ持たずに済む（`AiSummaryCard`は`source: "fallback"`の時だけ小さい注記を追加表示する）
+
+**新規ファイル**:
+
+| ファイル                                     | 内容                                                                                                                                                             |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lib/ai/api-key.ts`                           | Clerkユーザーの private metadata（キー`geminiApiKey`）への読み書き。`getGeminiApiKey`/`setGeminiApiKey`（空文字で削除扱い）                                       |
+| `lib/ai/gemini.ts`                            | `@ai-sdk/google`の`createGoogleGenerativeAI`をBYOKキーで都度生成する`createGeminiModel(apiKey)`                                                                   |
+| `lib/ai/context.ts`                           | プロジェクト・タスク・メンバー情報をAIプロンプト用テキストに整形する`formatProjectContext`（進捗率・期限リスクは`lib/computed/projects.ts`を再利用し二重実装しない） |
+| `lib/ai/prompts.ts`                           | 進捗サマリー・チャットのシステムプロンプト組み立て（`buildSummarySystemPrompt`/`buildSummaryPrompt`/`buildChatSystemPrompt`）                                     |
+| `lib/ai/tools.ts`                             | チャットのtool calling定義（`addTask`/`updateTask`/`completeTask`/`proposeTasks`）。`AiAction`型と`buildAiTools`                                                   |
+| `app/api/ai/api-key/route.ts`                 | BYOKキーのGET（`configured`のみ返す。キー自体は返さない）/PUT（保存）/DELETE（空文字保存で削除）                                                                  |
+| `app/api/ai/summary/route.ts`                 | Pane3 AI進捗サマリー用。APIキー未設定ならフォールバック文言、設定済みならGemini呼び出し結果を返す                                                                 |
+| `app/api/ai/chat/route.ts`                    | Pane4 AIアシスタント用。`generateText`（`stopWhen: stepCountIs(4)`）でtool callingを実行し、`toolResults`を`actions`に変換して返す                                |
+| `lib/api/ai-client.ts`                        | 上記3ルートのfetchラッパー（`fetchApiKeyStatus`/`saveApiKeyApi`/`clearApiKeyApi`/`fetchAiSummary`/`sendAiChatMessage`）。`AiChatResponse`等の型もここに定義        |
+| `__tests__/ai-tools.test.ts`                  | `buildAiTools`の`execute`のユニットテスト（担当者名解決・存在しないtaskIdのエラー処理等）                                                                          |
+| `__tests__/ai-context.test.ts`                | `formatProjectContext`のユニットテスト                                                                                                                             |
+| `__tests__/api-ai.test.ts`                    | `app/api/ai/**`のRoute Handlerユニットテスト。`ai`の`generateText`/`tool`と`lib/ai/api-key`をモックし、実Gemini呼び出し無しで検証                                 |
+
+**変更したファイル**:
+
+- `components/workspace/ApiKeySettingsDialog.tsx`: ローカルstateのみの保存（モック）を廃止し、
+  `lib/api/ai-client`経由で`app/api/ai/api-key`に接続。ダイアログを開くたびに設定状況
+  （`configured`）を取得して文言表示を切り替え、「削除」ボタンを追加した。保存済みのキー自体を
+  画面に表示することはない（サーバーは`configured`の真偽値のみ返す）
+- `components/workspace/ProjectDashboardPane.tsx`: `AiSummaryCard`のダミーテンプレート表示を
+  廃止し、`fetchAiSummary`を`useEffect`（`[project, categoryName, refreshNonce]`依存）で呼ぶ形に
+  変更。手動更新ボタンは`refreshNonce`をインクリメントしつつ、押下したイベントハンドラ内で
+  直接`setState({status:"loading"})`する（Effect内での同期setStateはeslintの
+  `react-hooks/set-state-in-effect`に抵触するため、ローディング表示はイベントハンドラ側に置いた）
+- `components/workspace/ProjectDetailPane.tsx`: `AiAssistantPanel`の正規表現ベースのダミー応答を
+  廃止し、`sendAiChatMessage`を呼ぶ非同期処理に置き換え。レスポンスの`actions`を
+  `onAddTask`/`onUpdateTaskField`/`onToggleTaskDone`へ振り分けて反映する。`onAddTask`の型を
+  `(title, extra?: Partial<Pick<Task,"dueDate"|"assigneeId"|"memo">>) => void`に拡張（AIが
+  期限・担当者・メモ付きでタスクを一発追加できるようにするため。第2引数はoptionalなので
+  Pane3の単発追加呼び出しは変更不要）。新規propsとして`categoryName`・`onUpdateTaskField`を
+  `AiAssistantPanel`に追加。送信中は入力欄・送信ボタンをdisabledにし、「考え中…」の吹き出しを表示する
+  ようにした（実APIレスポンス待ちが発生するため、ダミー応答時代には無かった待機状態のUIを追加）
+- `components/workspace/Workspace.tsx`: `addTask`ハンドラを上記の`extra`引数を受け取れるように拡張
+  （`createTaskApi`に`dueDate`/`assigneeId`/`memo`も渡すよう変更）。`ProjectDetailPane`に
+  `categoryName={activeProjectCategoryName}`を追加で渡すようにした
+- `lib/labels.ts`: モック時代の`AI_SUMMARY_TEMPLATES`・`buildAiTaskProposalTitles`・
+  `AI_CHAT_FALLBACK`（いずれもダミー応答生成用）を削除。`AI_NO_API_KEY_MESSAGE`・
+  `AI_CHAT_ERROR_MESSAGE`・`AI_SUMMARY_ERROR_MESSAGE`（固定文言のみ）を追加
+- `lib/api/schemas.ts`: `geminiApiKeySchema`/`aiSummaryRequestSchema`/`aiChatRequestSchema`を追加
+- `.env.example`: `GEMINI_MODEL_ID`（任意、既定モデルの上書き用）を追記。Gemini APIキー自体は
+  BYOKのためここには置かない
+- `__tests__/page.test.tsx`: `Pane3`の`AiSummaryCard`がマウント時に実fetchを呼ばないよう
+  `@/lib/api/ai-client`をモック追加（スモークテストの対象外のため）
+- `__tests__/labels.test.ts`: 削除対象の`buildAiTaskProposalTitles`のテストのみだったため削除
+
+**詰まった点と対処**:
+
+- **`ai`パッケージの最新版（v7系）はNode.js 22以上を要求する**（`@ai-sdk/provider`/
+  `@ai-sdk/provider-utils`のpackage.json `engines`）。ローカルのデフォルトNodeは20.10.0のため
+  `npm install`時にEBADENGINE警告が出るが、インストール・`next build`・`npm run dev`自体は
+  20.10.0でも動作した（§1のメモにある通り、Vitestの設定読み込みだけはVite7のフルESM化により
+  Node 20.19未満で失敗するため、テスト実行時はNode 23.7.0（Homebrew導入済み）に切り替えて
+  確認した）。本番（Vercel）・CIのNodeバージョン設定は§6の仕上げで見直しが必要になる可能性がある
+- **Route Handlerのユニットテストで`buildAiTools`が`ai`の`tool`エクスポートを要求する**:
+  `app/api/ai/chat/route.ts`のテストで`ai`モジュール全体を`generateText`のみ返す形でモックしたところ、
+  `generateText`呼び出し以前に`buildAiTools({...})`が`tool()`を呼んでいる箇所で
+  「`tool`が定義されていない」エラーになった。モックに`tool: vi.fn((definition) => definition)`
+  （パススルー）を追加して解決した
+- **`AiSummaryCard`のuseEffectで`setState`を同期呼び出しするとESLintエラーになる**:
+  `react-hooks/set-state-in-effect`（Reactの新しいeslint-plugin-react-hooksルール）に
+  引っかかった。Effect本体の先頭で`setState({status:"loading"})`していたのが原因。
+  初回マウント時のローディング表示は`useState`の初期値で賄い、手動更新ボタン押下時の
+  ローディング表示はボタンの`onClick`（イベントハンドラ）内で直接`setState`する形に変更して解消した
+- **サンドボックス環境でのブラウザ実動作確認が完了できなかった**: `npm run dev`
+  （Preview経由）でサーバー自体は正常に起動し、`curl`でも`/`が想定通りClerkの実サインインページ
+  （`https://<subdomain>.accounts.dev/sign-in`）に307リダイレクトされることを確認した。しかし
+  本セッションのサンドボックス化されたプレビューブラウザは外部ドメイン（Clerkのホスト型
+  サインインページ）への遷移が`net::ERR_ABORTED`で失敗し、実際にサインインしてPane3/Pane4の
+  画面までは到達できなかった。そのため、**Gemini実APIキーを使った動作確認（進捗サマリー生成・
+  チャットでのタスク追加編集完了・タスク洗い出し・APIキー未設定時のフォールバック表示）は
+  ユーザー自身の手元環境で`npm run dev`から行うこと**。ユニットテスト（`ai`の`generateText`を
+  モック）・`lint`・`build`はいずれもグリーンを確認済み
+
+**次セクション（§6）への引き継ぎ**:
+
+- AI関連のRoute Handler（`app/api/ai/**`）はいずれも`requireOrgId()`のみで保護しており、
+  ロールによる制限はかけていない（§6のスコープ外）。§6で権限モデルが固まった際、AI機能に
+  ロール制限が必要か（例: タスク追加・編集をAI経由でも一般Memberに許可し続けるか）を
+  改めて確認すること
+- BYOKのAPIキーはユーザー単位（Clerk private metadata）のため、同じ組織内でもメンバーごとに
+  「Geminiが使える人・使えない人」が混在しうる。§6のドキュメント整備（README等）で、
+  この前提（組織全体の設定ではなくユーザー個人の設定であること）を明記しておくとよい
+- `GEMINI_MODEL_ID`は`.env.local`の任意設定項目として追加したが、Vercel本番環境に
+  デプロイする際は特に設定不要（未設定なら`gemini-flash-latest`が使われる）。§6のデプロイ手順
+  ドキュメント化の際、他の環境変数一覧と合わせて記載すること
 
 ---
 

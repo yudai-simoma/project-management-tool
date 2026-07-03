@@ -437,10 +437,15 @@ export function Workspace({
   );
 
   // Pane 3「+ タスク追加」、および Pane 4 AIアシスタントタブの両方から呼ばれる。
+  // `extra` はAIアシスタントのタスク追加ツール（期限・担当者・メモを一度に指定できる）向け。
+  // 単発追加（Pane3の「+」等）は従来通りタイトルのみで呼び出せる。
   const addTask = useCallback(
-    (title: string) => {
+    (
+      title: string,
+      extra?: Partial<Pick<Task, "dueDate" | "assigneeId" | "memo">>,
+    ) => {
       const projectId = selectedProjectId;
-      const newTask: Task = createMinimalTask(title);
+      const newTask: Task = { ...createMinimalTask(title), ...extra };
       setProjects((prev) =>
         prev.map((p) =>
           p.id !== projectId ? p : { ...p, tasks: [...p.tasks, newTask] },
@@ -449,7 +454,13 @@ export function Workspace({
 
       runOptimistic(
         () =>
-          createTaskApi(projectId, { id: newTask.id, title: newTask.title }),
+          createTaskApi(projectId, {
+            id: newTask.id,
+            title: newTask.title,
+            dueDate: newTask.dueDate,
+            assigneeId: newTask.assigneeId,
+            memo: newTask.memo,
+          }),
         () =>
           setProjects((prev) =>
             prev.map((p) =>
@@ -640,6 +651,7 @@ export function Workspace({
                   <ProjectDetailPane
                     selectedProjectId={selectedProjectId}
                     project={activeProject}
+                    categoryName={activeProjectCategoryName}
                     members={members}
                     selectedDetail={selectedDetail}
                     scrollAnchor={scrollAnchor}

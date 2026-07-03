@@ -28,6 +28,16 @@ vi.mock("@/db/repositories/projects", () => ({
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(async () => ({ orgId: "org_test" })),
 }));
+// Pane 3 の `AiSummaryCard` がマウント時に実fetchを呼ばないよう、AI関連クライアントを
+// スタブする（本テストはページ全体のスモークテストのため、AI機能自体の検証は
+// `__tests__/api-ai.test.ts`・`__tests__/ai-tools.test.ts` に委ねる）。
+vi.mock("@/lib/api/ai-client", () => ({
+  fetchAiSummary: vi.fn(async () => ({ source: "fallback", summary: "" })),
+  fetchApiKeyStatus: vi.fn(async () => ({ configured: false })),
+  saveApiKeyApi: vi.fn(),
+  clearApiKeyApi: vi.fn(),
+  sendAiChatMessage: vi.fn(),
+}));
 // `Workspace` 配下の `GlobalHeader`/`OrgSwitcher`（Client Component）が使う Clerk の
 // フック群。`<ClerkProvider>` 無しでレンダリングするため、本テストでは最小限のスタブを返す
 // （組織・ユーザー情報自体の検証は `OrgSwitcher`/`GlobalHeader` 単体のテストで行う）。

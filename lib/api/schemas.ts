@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 
-import { projectStatusKeySchema, roleSchema } from "@/lib/schema";
+import { memberSchema, projectSchema, projectStatusKeySchema, roleSchema } from "@/lib/schema";
 
 // ===== カテゴリ =====
 
@@ -87,3 +87,27 @@ export const updateTaskSchema = z
   .refine((v) => Object.keys(v).length > 0, {
     message: "更新項目が指定されていません",
   });
+
+// ===== AI（Gemini実接続、BYOK） =====
+
+export const geminiApiKeySchema = z.object({
+  apiKey: z.string().min(1),
+});
+
+export const aiSummaryRequestSchema = z.object({
+  project: projectSchema,
+  categoryName: z.string(),
+});
+
+export const aiChatRequestSchema = z.object({
+  project: projectSchema,
+  categoryName: z.string(),
+  members: z.array(memberSchema),
+  history: z.array(
+    z.object({
+      role: z.enum(["user", "assistant"]),
+      content: z.string(),
+    }),
+  ),
+  message: z.string().min(1),
+});
