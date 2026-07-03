@@ -40,7 +40,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AddItemDialog } from "@/components/workspace/AddItemDialog";
-import { STATUS_LABELS } from "@/lib/labels";
+import { MANAGE_ROLE_TOOLTIP, STATUS_LABELS } from "@/lib/labels";
 
 // dnd-kit のスクリーンリーダー向け日本語化。
 const screenReaderInstructions: ScreenReaderInstructions = {
@@ -62,6 +62,8 @@ type ProjectListPaneProps = {
     toIndex: number,
   ) => void;
   canAddProject: boolean;
+  /** プロジェクト削除はOwner/Adminのみ許可する（§6決定）。 */
+  canDeleteProject: boolean;
 };
 
 export function ProjectListPane({
@@ -72,6 +74,7 @@ export function ProjectListPane({
   onDeleteProject,
   onMoveProject,
   canAddProject,
+  canDeleteProject,
 }: ProjectListPaneProps) {
   const [addDialogStatus, setAddDialogStatus] = useState<{
     status: ProjectStatusKey;
@@ -204,6 +207,7 @@ export function ProjectListPane({
                 selectedProjectId={selectedProjectId}
                 onSelectProject={onSelectProject}
                 canAddProject={canAddProject}
+                canDeleteProject={canDeleteProject}
                 onAddRequest={() =>
                   setAddDialogStatus({
                     status: group.status,
@@ -265,6 +269,7 @@ function StatusGroup({
   selectedProjectId,
   onSelectProject,
   canAddProject,
+  canDeleteProject,
   onAddRequest,
   onDeleteRequest,
 }: {
@@ -274,6 +279,7 @@ function StatusGroup({
   selectedProjectId: string;
   onSelectProject: (id: string) => void;
   canAddProject: boolean;
+  canDeleteProject: boolean;
   onAddRequest: () => void;
   onDeleteRequest: (id: string, name: string) => void;
 }) {
@@ -351,13 +357,27 @@ function StatusGroup({
                 selected={project.id === selectedProjectId}
                 onSelect={onSelectProject}
                 actions={
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => onDeleteRequest(project.id, project.name)}
-                  >
-                    <Trash2 />
-                    削除
-                  </DropdownMenuItem>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={!canDeleteProject}
+                          onClick={() =>
+                            onDeleteRequest(project.id, project.name)
+                          }
+                        >
+                          <Trash2 />
+                          削除
+                        </DropdownMenuItem>
+                      }
+                    />
+                    {!canDeleteProject && (
+                      <TooltipContent side="right">
+                        {MANAGE_ROLE_TOOLTIP}
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
                 }
               />
             ))

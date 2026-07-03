@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { deleteProject, updateProject } from "@/db/repositories/projects";
-import { requireOrgId } from "@/lib/api/auth";
+import { requireOrgId, requireOrgRole } from "@/lib/api/auth";
 import {
   notFoundResponse,
   readJsonBody,
   zodErrorResponse,
 } from "@/lib/api/respond";
 import { updateProjectSchema } from "@/lib/api/schemas";
+import { MANAGE_ROLES } from "@/lib/auth/permissions";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -26,7 +27,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
-  const ctx = await requireOrgId();
+  const ctx = await requireOrgRole(MANAGE_ROLES);
   if (!ctx.ok) return ctx.response;
 
   const { id } = await params;

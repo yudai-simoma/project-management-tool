@@ -1,7 +1,12 @@
 # workspace-ui-kit
 
-採用管理ドメインの **4ペイン Next.js 16 × shadcn/ui ワークスペース雛形**。
-受講生向けの動かし方・業種変更手順は README を参照。
+もとは採用管理ドメインの **4ペイン Next.js 16 × shadcn/ui ワークスペース雛形**。
+本リポジトリでは「**社内のプロジェクト管理ツール**」への作り変え（モック実装 →
+Neon/Clerk/Gemini実接続 → ロール権限制限）まで完了している（詳細は
+[docs/mock-implementation-plan.md](docs/mock-implementation-plan.md)・
+[docs/backend-implementation-plan.md](docs/backend-implementation-plan.md) 参照）。
+汎用テンプレートとしての動かし方・業種変更手順、環境構築・環境変数・デプロイ手順は
+README を参照。
 
 ## 視覚 SSoT
 
@@ -64,7 +69,7 @@ npm run check:radius # 角丸ドリフト検出
 
 ## バックエンド実装フェーズ
 
-モック実装フェーズ完了後、DB接続・認証・AI実接続を含む**バックエンド実装フェーズ**に着手した。セクションごとに内容がぶれないよう、作業は [docs/backend-implementation-plan.md](docs/backend-implementation-plan.md) のプロンプト単位で進める。着手前に必ず `docs/mock-implementation-plan.md`（特に §2.4〜§2.6, §8）を読み、既存の意思決定と矛盾しない形で進めること。
+モック実装フェーズ完了後、DB接続・認証・AI実接続・ロールに基づく操作制限を含む**バックエンド実装フェーズ**（セクション1〜6）を完了した。セクションごとに内容がぶれないよう、作業は [docs/backend-implementation-plan.md](docs/backend-implementation-plan.md) のプロンプト単位で進めてきた。追加のバックエンド作業に着手する際は、必ず `docs/mock-implementation-plan.md`（特に §2.4〜§2.6, §8）と `docs/backend-implementation-plan.md` の既存セクションの実装メモを読み、既存の意思決定と矛盾しない形で進めること。
 
 ## 配布制約
 

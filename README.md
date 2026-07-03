@@ -1,20 +1,43 @@
 # workspace-ui-kit
 
 「自分の思想を画面にする」月のひな形です。
-画面にはサンプルとして**採用管理**の4ペイン（候補者リスト・候補者の詳細・スコアカード・サイドバー）が出ますが、これを自分の仕事用に作り変えるところから月3の課題が始まります。
+このリポジトリでは月3の課題として、雛形の**採用管理**サンプルを「**社内のプロジェクト管理ツール**」（プロジェクトカテゴリ→プロジェクト→タスクの階層、Owner/Admin/Memberのロール、AI進捗サマリー・壁打ちアシスタント）に作り変え、Neon（DB）・Clerk（認証・組織・権限）・Gemini（AI、BYOK）への実接続まで完了させています。作り変えの経緯・意思決定は [docs/mock-implementation-plan.md](docs/mock-implementation-plan.md)・[docs/backend-implementation-plan.md](docs/backend-implementation-plan.md) を参照してください。
 
-## 起動する
+## 起動する（ローカル開発）
 
 ```bash
 git clone <このリポジトリのURL>
 cd workspace-ui-kit
 npm install
+cp .env.example .env.local   # 環境変数を設定する（次項「環境変数」参照）
+npm run db:migrate           # Neon にテーブルを作成
+npm run db:seed              # サンプルデータを投入
 npm run dev
 ```
 
-ブラウザで `http://localhost:3000` を開くと、採用管理のサンプル画面が表示されます。
+ブラウザで `http://localhost:3000` を開くと、Clerkのサインイン画面（未サインイン時）→組織作成/参加のオンボーディング→プロジェクト管理ワークスペースの4ペイン画面が表示されます。
 
-![採用管理のサンプル画面：左から「部署/ポジション」「候補者リスト」「候補者ダッシュボード」「選考ステージ詳細」の4ペイン構造](docs/screenshot-workspace.png)
+> Node.js のバージョンに注意: `vitest.config.ts` の読み込みに Node 20.19 以上が必要です（`vite@7` のフルESM化のため）。デフォルトのNodeが古い場合は Node 22 LTS 以上に切り替えてから `npm run dev` / `npm run test` を実行してください。
+
+![プロジェクト管理ワークスペースの4ペイン構造（雛形当初の画面。現在は採用管理からプロジェクト管理ドメインへ作り替え済み）](docs/screenshot-workspace.png)
+
+## 環境変数
+
+`.env.example` に必要なキー名をまとめている。`.env.local`（gitignore対象）にコピーして値を埋める。
+
+| 変数名                              | 必須                     | 取得元・説明                                                                                                                                                                                          |
+| ------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                       | ✅                       | Neon コンソール → Connect → Connection string。`drizzle-orm/neon-http`（HTTP経由）を使うため pooled connection の文字列でよい                                                                          |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`  | ✅                       | Clerk Dashboard → API Keys                                                                                                                                                                              |
+| `CLERK_SECRET_KEY`                   | ✅                       | Clerk Dashboard → API Keys                                                                                                                                                                              |
+| `SEED_ORG_ID`                        | 開発時のみ（`db:seed`用） | `npm run db:seed` の投入先組織ID（`org_xxx`）。Clerkでアプリの組織を作成した後、Dashboard の Organizations 一覧で確認する。本番では未使用                                                              |
+| `GEMINI_MODEL_ID`                    | 任意                      | AI機能で使うGeminiモデルIDの上書き（既定値 `gemini-flash-latest`）。Gemini APIキー自体はBYOK方針のためここには置かない（ユーザーが画面右上「Gemini APIキー設定」から個人単位で登録し、Clerkユーザーのprivate metadataに保存される） |
+
+Clerk側の事前設定（Dashboard の初期設定として一度だけ必要）:
+
+- Organizations を有効化し、「Membership required」（個人アカウント無効・組織所属必須）を選択する
+- 認証方式は Google のみを有効化する
+- Owner/Admin/Memberの3段階ロールを使うため、`org:owner` というカスタムロール（Adminと同じ全権限）を作成し、「Role sets」→「Primary Role Set」の Creator's initial role を `org:owner` に変更する（組織作成者はOwner、招待されたメンバーの既定ロールはMemberになる）
 
 ## 構成
 
@@ -24,21 +47,28 @@ npm run dev
 - **Tailwind CSS v4**（`app/globals.css` の `@theme` で CSS 変数を一元管理）
 - **shadcn/ui**（`base-nova` スタイル / `@base-ui/react` ベース）
 - **lucide-react**（アイコン）/ **zod**（実行時の型検証）
+- **Neon**（Postgres）+ **Drizzle**（ORM、`db/schema.ts`・`db/repositories/*`）
+- **Clerk**（Google認証・Organizations・Owner/Admin/Memberロール）
+- **Vercel AI SDK**（`ai` + `@ai-sdk/google`）+ **Google Gemini**（BYOK、ユーザー個人のAPIキー）
 
 ### ディレクトリ構成
 
 ```
-app/                Next.js App Router の画面エントリ
-  page.tsx          トップページ（ここから Workspace を呼んでいる）
+app/                Next.js App Router の画面エントリ・API Route Handler
+  page.tsx          トップページ（DBから初期データ取得 → Workspace を呼んでいる）
+  api/               Category/Project/Task/Member/AI の CRUD API
+  sign-in/ sign-up/ onboarding/  Clerk 認証・組織オンボーディング画面
   globals.css       色・角丸・余白などのデザイントークン
 components/
   ui/               shadcn の UI 部品（Button, Card, Dialog 等。編集 OK）
   primitives/       このプロジェクト独自の編集 UI 部品
   workspace/        4ペイン本体（Pane1〜4 と関連ダイアログ）
-data/               サンプルの種データ（JSON）
+db/                 Drizzle スキーマ・接続クライアント・リポジトリ層・シード
+data/               サンプルの種データ（JSON、`db:seed` 用。実運用パスはDB/Clerk）
 hooks/              React のカスタムフック
-lib/                型定義（zod スキーマ）・ユーティリティ
+lib/                型定義（zod スキーマ）・ユーティリティ・認証/権限判定・AI連携
 openspec/           設計の決定記録（ADR、参考資料）
+docs/               意思決定ログ（`mock-implementation-plan.md`・`backend-implementation-plan.md`）
 __tests__/          テスト
 ```
 
@@ -46,14 +76,26 @@ __tests__/          テスト
 
 ### 開発コマンド
 
-| コマンド               | 役割                               |
-| ---------------------- | ---------------------------------- |
-| `npm run dev`          | 開発サーバー起動                   |
-| `npm run build`        | 本番ビルド                         |
-| `npm run lint`         | ESLint チェック                    |
-| `npm run test`         | スモークテスト（Vitest）           |
-| `npm run format`       | Prettier で整形                    |
-| `npm run check:radius` | 角丸ドリフト検出（独自スクリプト） |
+| コマンド               | 役割                                     |
+| ---------------------- | ---------------------------------------- |
+| `npm run dev`          | 開発サーバー起動                         |
+| `npm run build`        | 本番ビルド                               |
+| `npm run lint`         | ESLint チェック                          |
+| `npm run test`         | スモークテスト（Vitest）                 |
+| `npm run format`       | Prettier で整形                          |
+| `npm run check:radius` | 角丸ドリフト検出（独自スクリプト）       |
+| `npm run db:generate`  | Drizzle マイグレーションファイルの生成   |
+| `npm run db:migrate`   | Neon にマイグレーションを適用            |
+| `npm run db:seed`      | `data/*.json` のサンプルデータを投入     |
+
+## デプロイ（Vercel）
+
+1. Neon でプロジェクトを作成し、`DATABASE_URL` を発行する
+2. Clerk でアプリケーションを作成し、本番用インスタンスのキーを発行する（開発用インスタンスのキーとは別。「環境変数」節の事前設定を本番インスタンス側でも行う）
+3. Vercel のプロジェクト設定 → Environment Variables に、上記「環境変数」表の `DATABASE_URL`・`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`・`CLERK_SECRET_KEY` を設定する（`SEED_ORG_ID` は本番では不要。`GEMINI_MODEL_ID` は既定モデルのままでよければ未設定でよい）
+4. デプロイ前に一度ローカルから `npm run db:migrate` を実行し、本番DBにテーブルを作成しておく（Vercelのビルド時にはマイグレーションを自動実行しないため）
+5. `git push` などでVercelにデプロイする（`next build` が通ることは `npm run build` で事前確認済み）
+6. デプロイ後、Clerk Dashboard の「Paths」設定で本番URLを許可オリジンに追加する
 
 ## 同梱されている "AI への操縦マニュアル"
 

@@ -13,17 +13,35 @@ vi.mock("@/lib/clerk/org-members", () => ({
   updateMemberRole: vi.fn(),
   removeMember: vi.fn(),
   revokeInvitation: vi.fn(),
+  isSoleOwner: vi.fn(async () => false),
 }));
 vi.mock("@/lib/api/auth", () => ({
-  requireOrgId: vi.fn(async () => ({ ok: true, orgId: "org_test" })),
+  requireOrgId: vi.fn(async () => ({
+    ok: true,
+    orgId: "org_test",
+    userId: "user_admin",
+    role: "admin",
+  })),
+  requireOrgRole: vi.fn(async () => ({
+    ok: true,
+    orgId: "org_test",
+    userId: "user_admin",
+    role: "admin",
+  })),
 }));
 vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(async () => ({ userId: "user_admin", orgId: "org_test" })),
+  auth: vi.fn(async () => ({
+    userId: "user_admin",
+    orgId: "org_test",
+    orgRole: "org:admin",
+  })),
 }));
 
+import { NextResponse } from "next/server";
 import { ClerkAPIResponseError } from "@clerk/nextjs/errors";
 
 import * as orgMembers from "@/lib/clerk/org-members";
+import { requireOrgRole } from "@/lib/api/auth";
 import { GET, POST } from "@/app/api/members/route";
 import { DELETE, PATCH } from "@/app/api/members/[id]/route";
 import { DELETE as DELETE_INVITATION } from "@/app/api/members/invitations/[id]/route";
@@ -33,6 +51,16 @@ const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // `vi.clearAllMocks()` は呼び出し履歴のみクリアし、個別テストが
+  // `mockResolvedValue` で上書きしたデフォルト実装は引き継がれてしまうため、
+  // ロール・Owner関連のガードのデフォルト値をテストごとに明示的に戻す。
+  asMock(requireOrgRole).mockResolvedValue({
+    ok: true,
+    orgId: "org_test",
+    userId: "user_admin",
+    role: "admin",
+  } as never);
+  asMock(orgMembers.isSoleOwner).mockResolvedValue(false);
 });
 
 describe("GET /api/members", () => {
@@ -178,6 +206,58 @@ describe("PATCH /api/members/[id]", () => {
     expect(res.status).toBe(400);
     expect(orgMembers.updateMemberRole).not.toHaveBeenCalled();
   });
+
+  it("Owner/Admin以外は403を返す（§6ロール制限）", async () => {
+    asMock(requireOrgRole).mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "権限がありません" }, { status: 403 }),
+    } as never);
+
+    const res = await PATCH(
+      new Request("http://localhost/api/members/user_1", {
+        method: "PATCH",
+        body: JSON.stringify({ role: "admin" }),
+      }),
+      { params: Promise.resolve({ id: "user_1" }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(orgMembers.updateMemberRole).not.toHaveBeenCalled();
+  });
+
+  it("唯一のOwnerを降格しようとすると403を返す（§6決定）", async () => {
+    asMock(orgMembers.isSoleOwner).mockResolvedValue(true);
+
+    const res = await PATCH(
+      new Request("http://localhost/api/members/user_1", {
+        method: "PATCH",
+        body: JSON.stringify({ role: "member" }),
+      }),
+      { params: Promise.resolve({ id: "user_1" }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(orgMembers.updateMemberRole).not.toHaveBeenCalled();
+  });
+
+  it("唯一のOwnerでも role: owner への変更（実質no-op）はブロックしない", async () => {
+    asMock(orgMembers.isSoleOwner).mockResolvedValue(true);
+    asMock(orgMembers.updateMemberRole).mockResolvedValue({
+      id: "user_1",
+      name: "佐藤 健太",
+      role: "owner",
+    });
+
+    const res = await PATCH(
+      new Request("http://localhost/api/members/user_1", {
+        method: "PATCH",
+        body: JSON.stringify({ role: "owner" }),
+      }),
+      { params: Promise.resolve({ id: "user_1" }) },
+    );
+
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("DELETE /api/members/[id]", () => {
@@ -191,6 +271,46 @@ describe("DELETE /api/members/[id]", () => {
 
     expect(res.status).toBe(204);
     expect(orgMembers.removeMember).toHaveBeenCalledWith("org_test", "user_1");
+  });
+
+  it("Owner/Admin以外は403を返す（§6ロール制限）", async () => {
+    asMock(requireOrgRole).mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "権限がありません" }, { status: 403 }),
+    } as never);
+
+    const res = await DELETE(
+      new Request("http://localhost/api/members/user_1", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "user_1" }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(orgMembers.removeMember).not.toHaveBeenCalled();
+  });
+
+  it("自分自身を削除しようとすると403を返す（§6決定）", async () => {
+    // `requireOrgRole` の既定モックは userId: "user_admin" を返す。
+    const res = await DELETE(
+      new Request("http://localhost/api/members/user_admin", {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: "user_admin" }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(orgMembers.removeMember).not.toHaveBeenCalled();
+  });
+
+  it("唯一のOwnerを削除しようとすると403を返す（§6決定）", async () => {
+    asMock(orgMembers.isSoleOwner).mockResolvedValue(true);
+
+    const res = await DELETE(
+      new Request("http://localhost/api/members/user_1", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "user_1" }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(orgMembers.removeMember).not.toHaveBeenCalled();
   });
 });
 
@@ -210,5 +330,22 @@ describe("DELETE /api/members/invitations/[id]", () => {
       "org_test",
       "orginv_1",
     );
+  });
+
+  it("Owner/Admin以外は403を返す（§6ロール制限）", async () => {
+    asMock(requireOrgRole).mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "権限がありません" }, { status: 403 }),
+    } as never);
+
+    const res = await DELETE_INVITATION(
+      new Request("http://localhost/api/members/invitations/orginv_1", {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: "orginv_1" }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(orgMembers.revokeInvitation).not.toHaveBeenCalled();
   });
 });

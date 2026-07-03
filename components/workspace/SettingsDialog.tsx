@@ -24,17 +24,26 @@ import {
 } from "@/components/ui/input-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { MANAGE_ROLE_TOOLTIP } from "@/lib/labels";
 
 type SettingsDialogContentProps = {
   categories: Category[];
   onAddCategory: (name: string) => void;
   onDeleteCategory: (categoryId: string) => void;
+  /** カテゴリ削除はOwner/Adminのみ許可する（§6決定）。 */
+  canDeleteCategory: boolean;
 };
 
 export function SettingsDialogContent({
   categories,
   onAddCategory,
   onDeleteCategory,
+  canDeleteCategory,
 }: SettingsDialogContentProps) {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<{
@@ -72,21 +81,33 @@ export function SettingsDialogContent({
                     className="flex items-center justify-between px-3 py-2"
                   >
                     <span className="text-sm">{category.name}</span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() =>
-                        setDeleteCategoryTarget({
-                          id: category.id,
-                          name: category.name,
-                        })
-                      }
-                      aria-label={`${category.name} を削除`}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            disabled={!canDeleteCategory}
+                            onClick={() =>
+                              setDeleteCategoryTarget({
+                                id: category.id,
+                                name: category.name,
+                              })
+                            }
+                            aria-label={`${category.name} を削除`}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 />
+                          </Button>
+                        }
+                      />
+                      {!canDeleteCategory && (
+                        <TooltipContent side="top">
+                          {MANAGE_ROLE_TOOLTIP}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
                   </div>
                 ))}
                 {categories.length === 0 && (

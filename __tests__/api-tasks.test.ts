@@ -4,12 +4,19 @@ vi.mock("@/db/repositories/tasks", () => ({
   createTask: vi.fn(),
   updateTask: vi.fn(),
   deleteTask: vi.fn(),
+  getTaskById: vi.fn(),
 }));
 vi.mock("@/lib/api/auth", () => ({
-  requireOrgId: vi.fn(async () => ({ ok: true, orgId: "org_test" })),
+  requireOrgId: vi.fn(async () => ({
+    ok: true,
+    orgId: "org_test",
+    userId: "user_owner",
+    role: "owner",
+  })),
 }));
 
 import * as tasksRepo from "@/db/repositories/tasks";
+import { requireOrgId } from "@/lib/api/auth";
 import { POST } from "@/app/api/projects/[id]/tasks/route";
 import { DELETE, PATCH } from "@/app/api/tasks/[id]/route";
 
@@ -114,7 +121,8 @@ describe("PATCH /api/tasks/[id]", () => {
 });
 
 describe("DELETE /api/tasks/[id]", () => {
-  it("タスクを削除し204を返す", async () => {
+  it("Owner はどのタスクでも削除でき204を返す", async () => {
+    vi.mocked(tasksRepo.getTaskById).mockResolvedValue(sampleTask);
     vi.mocked(tasksRepo.deleteTask).mockResolvedValue(true);
 
     const res = await DELETE(
@@ -126,7 +134,7 @@ describe("DELETE /api/tasks/[id]", () => {
   });
 
   it("存在しないタスクは404を返す", async () => {
-    vi.mocked(tasksRepo.deleteTask).mockResolvedValue(false);
+    vi.mocked(tasksRepo.getTaskById).mockResolvedValue(null);
 
     const res = await DELETE(
       new Request("http://localhost/api/tasks/none", { method: "DELETE" }),
@@ -134,5 +142,48 @@ describe("DELETE /api/tasks/[id]", () => {
     );
 
     expect(res.status).toBe(404);
+    expect(tasksRepo.deleteTask).not.toHaveBeenCalled();
+  });
+
+  it("担当者本人（member）は自分のタスクを削除できる（§6決定）", async () => {
+    vi.mocked(requireOrgId).mockResolvedValueOnce({
+      ok: true,
+      orgId: "org_test",
+      userId: "user_member",
+      role: "member",
+    } as never);
+    vi.mocked(tasksRepo.getTaskById).mockResolvedValue({
+      ...sampleTask,
+      assigneeId: "user_member",
+    });
+    vi.mocked(tasksRepo.deleteTask).mockResolvedValue(true);
+
+    const res = await DELETE(
+      new Request("http://localhost/api/tasks/t-1", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "t-1" }) },
+    );
+
+    expect(res.status).toBe(204);
+  });
+
+  it("member は他人が担当のタスクを削除できず403を返す（§6決定）", async () => {
+    vi.mocked(requireOrgId).mockResolvedValueOnce({
+      ok: true,
+      orgId: "org_test",
+      userId: "user_member",
+      role: "member",
+    } as never);
+    vi.mocked(tasksRepo.getTaskById).mockResolvedValue({
+      ...sampleTask,
+      assigneeId: "user_other",
+    });
+
+    const res = await DELETE(
+      new Request("http://localhost/api/tasks/t-1", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "t-1" }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(tasksRepo.deleteTask).not.toHaveBeenCalled();
   });
 });

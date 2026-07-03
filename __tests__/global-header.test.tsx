@@ -29,6 +29,7 @@ const baseProps = {
   categories: [],
   onAddCategory: vi.fn(),
   onDeleteCategory: vi.fn(),
+  canDeleteCategory: true,
   mainView: "workspace" as const,
   onMainViewChange: vi.fn(),
 };

@@ -272,14 +272,15 @@ type Group = { status: ProjectStatusKey; label: string; items: ProjectRow[] };
 以下はモック実装フェーズのスコープ外。次のプランニングで別途タスク分解する。
 
 > **バックエンド実装フェーズ着手（2026-07-03）**: 以下の項目を、内容がぶれないようセクション分割したプロンプト集として [docs/backend-implementation-plan.md](./backend-implementation-plan.md) にまとめた。実装セッションはこのファイルの各セクションのプロンプトを使って進める。
+> **バックエンド実装フェーズ完了（2026-07-04）**: 下記6項目すべて実装済み（[docs/backend-implementation-plan.md](./backend-implementation-plan.md) セクション1〜6）。
 
-- Clerk（Google認証・Organizations・ロール）の実インストール・実配線
-- 組織メンバーの実管理（招待・削除・ロール変更）。モックでは `data/members.json` の固定データのみ
-- Neon + Drizzle のスキーマ定義・接続・マイグレーション
-- Vercel AI SDK + Gemini の実API呼び出し
-- BYOKキーの実保存（Clerk private metadataへの読み書きAPI）
-- ロールに基づく操作制限の実装（例: 削除はOwner/Adminのみ）。モックではバッジ表示のみ
-- 既存 `README.md` / `CLAUDE.md` の記述更新（現状は採用管理サンプル前提の記述が残っている。ドメイン変更が完了した段階で更新を検討）
+- ✅ Clerk（Google認証・Organizations・ロール）の実インストール・実配線（セクション3）
+- ✅ 組織メンバーの実管理（招待・削除・ロール変更）。Clerk Organizations経由に一本化し、`data/members.json`・DBの`members`テーブルは削除済み（セクション4）
+- ✅ Neon + Drizzle のスキーマ定義・接続・マイグレーション（セクション1）
+- ✅ Vercel AI SDK + Gemini の実API呼び出し（セクション5）
+- ✅ BYOKキーの実保存（Clerk private metadataへの読み書きAPI）（セクション5）
+- ✅ ロールに基づく操作制限の実装（削除系操作・メンバーのロール変更はOwner/Adminのみ、タスク削除は担当者本人にも許可。UI・APIの両方に実装済み）（セクション6）
+- ✅ 既存 `README.md` / `CLAUDE.md` の記述更新（環境構築手順・環境変数一覧・Vercelデプロイ手順を追記）（セクション6）
 
 ---
 

@@ -76,3 +76,14 @@ export const AI_CHAT_ERROR_MESSAGE =
 
 export const AI_SUMMARY_ERROR_MESSAGE =
   "AI進捗サマリーの取得に失敗しました。時間を置いて更新してください。";
+
+// ===== ロールに基づく操作制限の案内文言（`docs/backend-implementation-plan.md` セクション6） =====
+
+export const MANAGE_ROLE_TOOLTIP = "この操作はOwner/Adminのみ実行できます";
+
+export const TASK_DELETE_ROLE_TOOLTIP =
+  "このタスクの担当者、またはOwner/Adminのみ削除できます";
+
+export const SELF_REMOVE_TOOLTIP = "自分自身を組織から削除することはできません";
+
+export const LAST_OWNER_TOOLTIP = "組織には最低1名のOwnerが必要です";

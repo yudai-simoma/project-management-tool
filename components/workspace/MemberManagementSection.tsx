@@ -14,9 +14,12 @@
 
 import { useEffect, useState } from "react";
 import { Mail, Trash2, X } from "lucide-react";
+import { useOrganization } from "@clerk/nextjs";
 
 import { type Role } from "@/lib/schema";
-import { ROLE_LABEL } from "@/lib/labels";
+import { MANAGE_ROLE_TOOLTIP, ROLE_LABEL } from "@/lib/labels";
+import { toRole } from "@/lib/auth/roles";
+import { canManageOrg } from "@/lib/auth/permissions";
 import type {
   InvitationSummary,
   MemberWithEmail,
@@ -46,6 +49,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const ROLE_OPTIONS: readonly Role[] = ["owner", "admin", "member"];
 
@@ -53,13 +61,19 @@ function RoleSelect({
   value,
   onValueChange,
   ariaLabel,
+  disabled,
 }: {
   value: Role;
   onValueChange: (role: Role) => void;
   ariaLabel: string;
+  disabled?: boolean;
 }) {
   return (
-    <Select value={value} onValueChange={(v) => onValueChange(v as Role)}>
+    <Select
+      value={value}
+      onValueChange={(v) => onValueChange(v as Role)}
+      disabled={disabled}
+    >
       <SelectTrigger size="sm" aria-label={ariaLabel}>
         <SelectValue />
       </SelectTrigger>
@@ -75,6 +89,10 @@ function RoleSelect({
 }
 
 export function MemberManagementSection() {
+  // メンバーの招待・削除・ロール変更は Owner/Admin のみ許可する（§6決定）。
+  const { membership } = useOrganization();
+  const canManage = canManageOrg(toRole(membership?.role));
+
   const [members, setMembers] = useState<MemberWithEmail[]>([]);
   const [invitations, setInvitations] = useState<InvitationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,23 +205,52 @@ export function MemberManagementSection() {
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <RoleSelect
-                    value={member.role}
-                    onValueChange={(role) => handleRoleChange(member.id, role)}
-                    ariaLabel={`${member.name} のロール`}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() =>
-                      setRemoveTarget({ id: member.id, name: member.name })
-                    }
-                    aria-label={`${member.name} を削除`}
-                    className="text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <RoleSelect
+                          value={member.role}
+                          onValueChange={(role) =>
+                            handleRoleChange(member.id, role)
+                          }
+                          ariaLabel={`${member.name} のロール`}
+                          disabled={!canManage}
+                        />
+                      }
+                    />
+                    {!canManage && (
+                      <TooltipContent side="top">
+                        {MANAGE_ROLE_TOOLTIP}
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          disabled={!canManage}
+                          onClick={() =>
+                            setRemoveTarget({
+                              id: member.id,
+                              name: member.name,
+                            })
+                          }
+                          aria-label={`${member.name} を削除`}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 />
+                        </Button>
+                      }
+                    />
+                    {!canManage && (
+                      <TooltipContent side="top">
+                        {MANAGE_ROLE_TOOLTIP}
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
                 </div>
               </div>
             ))}
@@ -236,16 +283,28 @@ export function MemberManagementSection() {
                     <Badge variant="outline" size="xs">
                       {ROLE_LABEL[invitation.role]}
                     </Badge>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => handleRevoke(invitation.id)}
-                      aria-label={`${invitation.email} への招待を取り消す`}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <X />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            disabled={!canManage}
+                            onClick={() => handleRevoke(invitation.id)}
+                            aria-label={`${invitation.email} への招待を取り消す`}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <X />
+                          </Button>
+                        }
+                      />
+                      {!canManage && (
+                        <TooltipContent side="top">
+                          {MANAGE_ROLE_TOOLTIP}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
                   </div>
                 </div>
               ))}

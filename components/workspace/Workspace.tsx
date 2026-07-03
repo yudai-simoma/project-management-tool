@@ -28,7 +28,10 @@
  */
 
 import { useState, useCallback, useMemo } from "react";
+import { useOrganization, useUser } from "@clerk/nextjs";
 
+import { toRole } from "@/lib/auth/roles";
+import { canManageOrg } from "@/lib/auth/permissions";
 import {
   type Category,
   type Member,
@@ -104,6 +107,13 @@ export function Workspace({
   const [overviewOpen, setOverviewOpen] = useState(true);
   // GlobalHeader のビュー切替（通常のワークスペース／全体ダッシュボード）。
   const [mainView, setMainView] = useState<MainView>("workspace");
+
+  // ロールに基づく操作制限（§6決定）。プロジェクト削除・カテゴリ削除は Owner/Admin のみ、
+  // タスク削除は担当者本人 または Owner/Admin に許可する（`lib/auth/permissions.ts` 参照）。
+  const { membership } = useOrganization();
+  const { user } = useUser();
+  const currentUserId = user?.id ?? "";
+  const canManage = canManageOrg(toRole(membership?.role));
 
   // アクティブプロジェクト。プロジェクトが 1 件も無い場合は null（削除で全件無くなった場合の
   // 保険）。Pane 3 / Pane 4 は null のとき空状態を表示する。
@@ -615,6 +625,7 @@ export function Workspace({
           categories={categories}
           onAddCategory={addCategory}
           onDeleteCategory={deleteCategory}
+          canDeleteCategory={canManage}
           mainView={mainView}
           onMainViewChange={setMainView}
         />
@@ -633,6 +644,7 @@ export function Workspace({
                 onDeleteProject={deleteProject}
                 onMoveProject={moveProject}
                 canAddProject={selectedCategoryId !== null}
+                canDeleteProject={canManage}
               />
               {activeProject ? (
                 <>
@@ -660,6 +672,8 @@ export function Workspace({
                     onToggleTaskDone={toggleTaskDone}
                     onDeleteTask={deleteTask}
                     onAddTask={addTask}
+                    canManageOrg={canManage}
+                    currentUserId={currentUserId}
                     pane4Open={pane4Open}
                     onTogglePane4={togglePane4}
                     pane4Tab={pane4Tab}

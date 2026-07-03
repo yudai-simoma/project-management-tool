@@ -10,6 +10,7 @@
 import { clerkClient } from "@clerk/nextjs/server";
 
 import { toClerkRole, toRole } from "@/lib/auth/roles";
+import { isOnlyOwner } from "@/lib/auth/permissions";
 import type { Member, Role } from "@/lib/schema";
 
 /** メンバー一覧管理UI向けの、メールアドレス付きメンバー情報。 */
@@ -146,4 +147,16 @@ export async function revokeInvitation(
     organizationId: orgId,
     invitationId,
   });
+}
+
+/**
+ * `userId` が組織内で唯一の Owner かどうか。メンバー削除・ロール変更の Route Handler で
+ * 「組織に Owner が1人もいなくなる」操作を防ぐガードとして使う（§6決定）。
+ */
+export async function isSoleOwner(
+  orgId: string,
+  userId: string,
+): Promise<boolean> {
+  const members = await listActiveMembers(orgId);
+  return isOnlyOwner(members, userId);
 }

@@ -97,6 +97,17 @@ export async function updateTask(
   return row ? toTask(row) : null;
 }
 
+export async function getTaskById(
+  orgId: string,
+  id: string,
+): Promise<Task | null> {
+  const [row] = await db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.id, id), eq(tasks.orgId, orgId)));
+  return row ? toTask(row) : null;
+}
+
 export async function deleteTask(orgId: string, id: string): Promise<boolean> {
   const deleted = await db
     .delete(tasks)

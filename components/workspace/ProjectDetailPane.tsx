@@ -31,7 +31,13 @@ import {
   type SelectedDetail,
   type Pane4Tab,
 } from "@/lib/schema";
-import { PANE4_SECTION_IDS, AI_CHAT_GREETING, AI_CHAT_ERROR_MESSAGE } from "@/lib/labels";
+import {
+  PANE4_SECTION_IDS,
+  AI_CHAT_GREETING,
+  AI_CHAT_ERROR_MESSAGE,
+  TASK_DELETE_ROLE_TOOLTIP,
+} from "@/lib/labels";
+import { canDeleteTask as checkCanDeleteTask } from "@/lib/auth/permissions";
 import { sendAiChatMessage } from "@/lib/api/ai-client";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,6 +45,11 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   InlineTextField,
   InlineDateField,
@@ -87,12 +98,14 @@ const UNASSIGNED_LABEL = "未アサイン";
 function TaskDetailContent({
   task,
   members,
+  canDelete,
   onUpdateField,
   onToggleDone,
   onRequestDelete,
 }: {
   task: Task;
   members: Member[];
+  canDelete: boolean;
   onUpdateField: (field: EditableTaskKey, value: string) => void;
   onToggleDone: () => void;
   onRequestDelete: () => void;
@@ -168,15 +181,27 @@ function TaskDetailContent({
       <Separator />
 
       <div className="px-5 py-4">
-        <Button
-          type="button"
-          variant="destructive"
-          onClick={onRequestDelete}
-          className="w-full"
-        >
-          <Trash2 data-icon="inline-start" />
-          タスクを削除
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={!canDelete}
+                onClick={onRequestDelete}
+                className="w-full"
+              >
+                <Trash2 data-icon="inline-start" />
+                タスクを削除
+              </Button>
+            }
+          />
+          {!canDelete && (
+            <TooltipContent side="top">
+              {TASK_DELETE_ROLE_TOOLTIP}
+            </TooltipContent>
+          )}
+        </Tooltip>
       </div>
     </div>
   );
@@ -506,6 +531,8 @@ export function ProjectDetailPane({
   onToggleTaskDone,
   onDeleteTask,
   onAddTask,
+  canManageOrg,
+  currentUserId,
   pane4Open,
   onTogglePane4,
   pane4Tab,
@@ -529,6 +556,9 @@ export function ProjectDetailPane({
     title: string,
     extra?: Partial<Pick<Task, "dueDate" | "assigneeId" | "memo">>,
   ) => void;
+  /** Owner/Admin かどうか（§6決定。タスク削除は担当者本人にも許可する）。 */
+  canManageOrg: boolean;
+  currentUserId: string;
   pane4Open: boolean;
   onTogglePane4: () => void;
   pane4Tab: Pane4Tab;
@@ -588,6 +618,11 @@ export function ProjectDetailPane({
                   key={`${selectedProjectId}-${selectedTask.id}`}
                   task={selectedTask}
                   members={members}
+                  canDelete={checkCanDeleteTask(
+                    canManageOrg,
+                    currentUserId,
+                    selectedTask.assigneeId,
+                  )}
                   onUpdateField={(field, value) =>
                     onUpdateTaskField(selectedTask.id, field, value)
                   }

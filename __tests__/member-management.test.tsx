@@ -15,6 +15,11 @@ vi.mock("@/lib/api/members-client", () => ({
   revokeInvitationApi: vi.fn(),
 }));
 
+const useOrganizationMock = vi.fn();
+vi.mock("@clerk/nextjs", () => ({
+  useOrganization: () => useOrganizationMock(),
+}));
+
 import * as membersClient from "@/lib/api/members-client";
 import { MemberManagementSection } from "@/components/workspace/MemberManagementSection";
 
@@ -23,6 +28,8 @@ const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // 既定は Owner/Admin（操作可能）。「Member は操作できない」ケースは個別テストで上書きする。
+  useOrganizationMock.mockReturnValue({ membership: { role: "org:admin" } });
   asMock(membersClient.fetchOrgMembers).mockResolvedValue({
     members: [
       {
@@ -105,5 +112,24 @@ describe("MemberManagementSection", () => {
       expect(membersClient.removeMemberApi).toHaveBeenCalledWith("user_1"),
     );
     expect(screen.queryByText("佐藤 健太")).not.toBeInTheDocument();
+  });
+
+  it("Memberロールでは削除ボタン・ロール変更・招待取り消しがdisabledになる（§6決定）", async () => {
+    useOrganizationMock.mockReturnValue({ membership: { role: "org:member" } });
+
+    render(<MemberManagementSection />);
+    await screen.findByText("佐藤 健太");
+
+    expect(
+      screen.getByRole("button", { name: "佐藤 健太 を削除" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "佐藤 健太 のロール" })).toHaveAttribute(
+      "data-disabled",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "pending@example.com への招待を取り消す",
+      }),
+    ).toBeDisabled();
   });
 });

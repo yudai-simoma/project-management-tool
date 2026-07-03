@@ -42,6 +42,8 @@ type GlobalHeaderProps = {
   categories: Category[];
   onAddCategory: (name: string) => void;
   onDeleteCategory: (categoryId: string) => void;
+  /** カテゴリ削除はOwner/Adminのみ許可する（§6決定）。 */
+  canDeleteCategory: boolean;
   mainView: MainView;
   onMainViewChange: (view: MainView) => void;
 };
@@ -126,6 +128,7 @@ export function GlobalHeader({
   categories,
   onAddCategory,
   onDeleteCategory,
+  canDeleteCategory,
   mainView,
   onMainViewChange,
 }: GlobalHeaderProps) {
@@ -193,6 +196,7 @@ export function GlobalHeader({
           categories={categories}
           onAddCategory={onAddCategory}
           onDeleteCategory={onDeleteCategory}
+          canDeleteCategory={canDeleteCategory}
         />
       </Dialog>
 

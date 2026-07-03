@@ -8,10 +8,24 @@ vi.mock("@/db/repositories/projects", () => ({
   reorderProjects: vi.fn(),
 }));
 vi.mock("@/lib/api/auth", () => ({
-  requireOrgId: vi.fn(async () => ({ ok: true, orgId: "org_test" })),
+  requireOrgId: vi.fn(async () => ({
+    ok: true,
+    orgId: "org_test",
+    userId: "user_owner",
+    role: "owner",
+  })),
+  requireOrgRole: vi.fn(async () => ({
+    ok: true,
+    orgId: "org_test",
+    userId: "user_owner",
+    role: "owner",
+  })),
 }));
 
+import { NextResponse } from "next/server";
+
 import * as projectsRepo from "@/db/repositories/projects";
+import { requireOrgRole } from "@/lib/api/auth";
 import { GET, POST } from "@/app/api/projects/route";
 import { DELETE, PATCH } from "@/app/api/projects/[id]/route";
 import { PATCH as REORDER } from "@/app/api/projects/reorder/route";
@@ -150,6 +164,21 @@ describe("DELETE /api/projects/[id]", () => {
     );
 
     expect(res.status).toBe(404);
+  });
+
+  it("Owner/Admin以外は403を返す（§6ロール制限）", async () => {
+    vi.mocked(requireOrgRole).mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "権限がありません" }, { status: 403 }),
+    } as never);
+
+    const res = await DELETE(
+      new Request("http://localhost/api/projects/p-1", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "p-1" }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(projectsRepo.deleteProject).not.toHaveBeenCalled();
   });
 });
 

@@ -18,6 +18,10 @@ export function notFoundResponse(message = "対象が見つかりません") {
   return NextResponse.json({ error: message }, { status: 404 });
 }
 
+export function forbiddenResponse(message = "この操作を行う権限がありません") {
+  return NextResponse.json({ error: message }, { status: 403 });
+}
+
 /** JSON ボディを読み取る。パースに失敗した場合は `null` を返す（呼び出し側で 400 を返す）。 */
 export async function readJsonBody(request: Request): Promise<unknown> {
   try {
