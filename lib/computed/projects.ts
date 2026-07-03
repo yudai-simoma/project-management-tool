@@ -7,7 +7,13 @@
  * 計算ロジックは本ファイルの関数に集約する MUST。
  */
 
-import { differenceInCalendarDays } from "date-fns";
+import {
+  compareAsc,
+  differenceInCalendarDays,
+  format,
+  isValid,
+  parseISO,
+} from "date-fns";
 
 import {
   type Project,
@@ -20,6 +26,14 @@ import { parseISODate } from "@/lib/utils";
 
 /** 期限が近いと判断する残り日数のしきい値（この日数以下で "dueSoon"）。 */
 const DUE_SOON_THRESHOLD_DAYS = 7;
+
+export type TaskCalendarDay = {
+  date: string;
+  dateValue: Date;
+  tasks: Task[];
+  openTasks: Task[];
+  doneTasks: Task[];
+};
 
 /**
  * プロジェクトの進捗率（0〜100）。タスクの完了比率から自動計算する。
@@ -125,6 +139,38 @@ export function getTaskProgress(
   const { done, total } = getSmallTaskCounts(tasks, parentTaskId);
   if (total === 0) return 0;
   return Math.round((done / total) * 100);
+}
+
+export function getTaskCalendarDays(tasks: Task[]): TaskCalendarDay[] {
+  const days = new Map<string, TaskCalendarDay>();
+
+  for (const task of tasks) {
+    if (!task.dueDate) continue;
+
+    const dateValue = parseISO(task.dueDate);
+    if (!isValid(dateValue)) continue;
+
+    const date = format(dateValue, "yyyy-MM-dd");
+    const day = days.get(date) ?? {
+      date,
+      dateValue,
+      tasks: [],
+      openTasks: [],
+      doneTasks: [],
+    };
+
+    day.tasks.push(task);
+    if (task.done) {
+      day.doneTasks.push(task);
+    } else {
+      day.openTasks.push(task);
+    }
+    days.set(date, day);
+  }
+
+  return [...days.values()].sort((a, b) =>
+    compareAsc(a.dateValue, b.dateValue),
+  );
 }
 
 function isDescendantOf(

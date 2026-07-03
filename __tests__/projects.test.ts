@@ -6,6 +6,7 @@ import {
   deriveDeadlineRisk,
   getTaskCounts,
   getStatusCounts,
+  getTaskCalendarDays,
 } from "@/lib/computed/projects";
 
 const baseTask = (over: Partial<Task>): Task => ({
@@ -88,6 +89,33 @@ describe("getTaskCounts", () => {
       done: 0,
       total: 0,
     });
+  });
+});
+
+describe("getTaskCalendarDays", () => {
+  it("期日を持つタスクを日付別に集計し、完了/未完了を分ける", () => {
+    const days = getTaskCalendarDays([
+      baseTask({ id: "large-1", parentTaskId: null, level: "large" }),
+      baseTask({ id: "t1", dueDate: "2026-07-10", done: false }),
+      baseTask({ id: "t2", dueDate: "2026-07-10", done: true }),
+      baseTask({ id: "t3", dueDate: "2026-07-11", done: true }),
+    ]);
+
+    expect(days.map((day) => day.date)).toEqual(["2026-07-10", "2026-07-11"]);
+    expect(days[0].tasks.map((task) => task.id)).toEqual(["t1", "t2"]);
+    expect(days[0].openTasks.map((task) => task.id)).toEqual(["t1"]);
+    expect(days[0].doneTasks.map((task) => task.id)).toEqual(["t2"]);
+  });
+
+  it("期日なしと不正な日付は除外し、日付昇順で返す", () => {
+    const days = getTaskCalendarDays([
+      baseTask({ id: "t1", dueDate: "not-a-date" }),
+      baseTask({ id: "t2", dueDate: "2026-08-01" }),
+      baseTask({ id: "t3", dueDate: "" }),
+      baseTask({ id: "t4", dueDate: "2026-07-01" }),
+    ]);
+
+    expect(days.map((day) => day.date)).toEqual(["2026-07-01", "2026-08-01"]);
   });
 });
 
