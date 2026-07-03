@@ -1,56 +1,36 @@
-import { type Profile, type StageKey, type Scorecard } from "@/lib/schema";
-import { STAGE_LABELS } from "@/lib/labels";
+import { type Task, type Project, type ProjectStatusKey } from "@/lib/schema";
 
 /**
- * 未作成ステージをクリックした時に Workspace が自動生成するための最小 Scorecard。
- * 全フィールド空（`deriveStageStatus` で pending 派生）。Pane 4 Mode 2 で inline edit すれば
- * 面接官アサインや日程設定ができる。
+ * タスク追加時に Workspace が生成する最小 Task。
+ * タイトルのみ指定し、他は空値（`assigneeId` は未アサイン状態の空文字）。
+ * Pane 4 詳細タブで inline edit すれば期限・担当者・メモを追記できる。
  */
-export function createMinimalScorecard(stage: StageKey): Scorecard {
+export function createMinimalTask(title: string): Task {
   return {
-    stage,
-    label: STAGE_LABELS[stage],
-    date: "",
-    format: "",
-    interviewer: "",
-    axisScores: {
-      achievements: null,
-      thinkingAbility: null,
-      communication: null,
-      cultureFit: null,
-    },
-    attachments: [],
+    id: `t-${Date.now()}`,
+    title,
+    done: false,
+    dueDate: "",
+    assigneeId: "",
+    memo: "",
   };
 }
 
 /**
- * c1 / c3 / c4 / c5 / c6 など「c2 以外の候補者」用の最小 Profile 生成ヘルパー。
- * ADR-0014 で Profile が 12 フィールド最小構成になり、avatar 頭文字は
- * 呼び出し側で `name[0]` 派生に統一されたため、`initial` 引数は削除済み。
- * 氏名以外は空文字に揃え、Pane 3 / Pane 4 では空欄として可視化される。
- *
- * `addCandidate`（Workspace 本体）からも参照されるため export する。
+ * プロジェクト追加時に Workspace が生成する最小 Project。
+ * `categoryId` は追加元の Pane 1 グループから、`status` は追加先のカンバン列から渡される。
  */
-export function createMinimalProfile(name: string): Profile {
+export function createEmptyProject(
+  categoryId: string,
+  name: string,
+  status: ProjectStatusKey = "planning",
+): Project {
   return {
-    // プロフィール (3)
+    id: `p-${Date.now()}`,
     name,
-    birthday: "",
-    source: "",
-
-    // 連絡先 (3)
-    email: "",
-    phone: "",
-    address: "",
-
-    // 選考状況 (4)
-    recruiter: "",
-    desiredSalaryMin: "",
-    desiredSalaryMax: "",
-    availableStartDate: "",
-
-    // 読み物 (2)
-    careerText: "",
-    motivationFull: "",
+    categoryId,
+    status,
+    deadline: "",
+    tasks: [],
   };
 }

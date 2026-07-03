@@ -1,24 +1,34 @@
 import { Workspace } from "@/components/workspace/Workspace";
-import positionsData from "@/data/positions.json";
-import candidatesData from "@/data/candidates.json";
+import categoriesData from "@/data/categories.json";
+import membersData from "@/data/members.json";
+import projectsData from "@/data/projects.json";
 import workspaceData from "@/data/workspace.json";
 import {
-  departmentsSchema,
-  candidatesSchema,
+  categoriesSchema,
+  membersSchema,
+  projectsSchema,
   workspaceSchema,
 } from "@/lib/schema";
 
 export default function Page() {
-  const deptResult = departmentsSchema.safeParse(positionsData);
-  const candResult = candidatesSchema.safeParse(candidatesData);
+  const categoriesResult = categoriesSchema.safeParse(categoriesData);
+  const membersResult = membersSchema.safeParse(membersData);
+  const projectsResult = projectsSchema.safeParse(projectsData);
   const wsResult = workspaceSchema.safeParse(workspaceData);
 
-  if (!deptResult.success || !candResult.success || !wsResult.success) {
+  if (
+    !categoriesResult.success ||
+    !membersResult.success ||
+    !projectsResult.success ||
+    !wsResult.success
+  ) {
     const errors = [
-      !deptResult.success &&
-        `positions.json: ${deptResult.error.issues[0]?.message}`,
-      !candResult.success &&
-        `candidates.json: ${candResult.error.issues[0]?.message}`,
+      !categoriesResult.success &&
+        `categories.json: ${categoriesResult.error.issues[0]?.message}`,
+      !membersResult.success &&
+        `members.json: ${membersResult.error.issues[0]?.message}`,
+      !projectsResult.success &&
+        `projects.json: ${projectsResult.error.issues[0]?.message}`,
       !wsResult.success &&
         `workspace.json: ${wsResult.error.issues[0]?.message}`,
     ].filter(Boolean);
@@ -27,8 +37,9 @@ export default function Page() {
 
   return (
     <Workspace
-      initialDepartments={deptResult.data}
-      initialCandidates={candResult.data}
+      initialCategories={categoriesResult.data}
+      initialMembers={membersResult.data}
+      initialProjects={projectsResult.data}
       workspace={wsResult.data}
     />
   );

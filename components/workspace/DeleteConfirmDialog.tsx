@@ -39,12 +39,15 @@ export function DeleteConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>
-            {description ?? `「${itemName}」を削除します。この操作は取り消せません。`}
+            {description ??
+              `「${itemName}」を削除します。この操作は取り消せません。`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>キャンセル</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>{actionLabel}</AlertDialogAction>
+          <AlertDialogAction onClick={onConfirm}>
+            {actionLabel}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

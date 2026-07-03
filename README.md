@@ -46,13 +46,13 @@ __tests__/          テスト
 
 ### 開発コマンド
 
-| コマンド | 役割 |
-|---|---|
-| `npm run dev` | 開発サーバー起動 |
-| `npm run build` | 本番ビルド |
-| `npm run lint` | ESLint チェック |
-| `npm run test` | スモークテスト（Vitest） |
-| `npm run format` | Prettier で整形 |
+| コマンド               | 役割                               |
+| ---------------------- | ---------------------------------- |
+| `npm run dev`          | 開発サーバー起動                   |
+| `npm run build`        | 本番ビルド                         |
+| `npm run lint`         | ESLint チェック                    |
+| `npm run test`         | スモークテスト（Vitest）           |
+| `npm run format`       | Prettier で整形                    |
 | `npm run check:radius` | 角丸ドリフト検出（独自スクリプト） |
 
 ## 同梱されている "AI への操縦マニュアル"

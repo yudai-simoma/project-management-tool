@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
-import { type Department } from "@/lib/schema";
+import { type Category } from "@/lib/schema";
 import { DeleteConfirmDialog } from "@/components/workspace/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,27 +25,27 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
 type SettingsDialogContentProps = {
-  departments: Department[];
-  onAddDepartment: (name: string) => void;
-  onDeleteDepartment: (deptId: string) => void;
+  categories: Category[];
+  onAddCategory: (name: string) => void;
+  onDeleteCategory: (categoryId: string) => void;
 };
 
 export function SettingsDialogContent({
-  departments,
-  onAddDepartment,
-  onDeleteDepartment,
+  categories,
+  onAddCategory,
+  onDeleteCategory,
 }: SettingsDialogContentProps) {
-  const [newDeptName, setNewDeptName] = useState("");
-  const [deleteDeptTarget, setDeleteDeptTarget] = useState<{
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<{
     id: string;
     name: string;
   } | null>(null);
 
-  const handleAddDept = () => {
-    const trimmed = newDeptName.trim();
+  const handleAddCategory = () => {
+    const trimmed = newCategoryName.trim();
     if (!trimmed) return;
-    onAddDepartment(trimmed);
-    setNewDeptName("");
+    onAddCategory(trimmed);
+    setNewCategoryName("");
   };
 
   return (
@@ -54,58 +54,63 @@ export function SettingsDialogContent({
         <DialogHeader>
           <DialogTitle>ワークスペース設定</DialogTitle>
           <DialogDescription>
-            事業部やワークスペース名を管理します
+            プロジェクトカテゴリやワークスペース名を管理します
           </DialogDescription>
         </DialogHeader>
 
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="settings-new-dept">事業部</FieldLabel>
+            <FieldLabel htmlFor="settings-new-category">
+              プロジェクトカテゴリ
+            </FieldLabel>
             <ScrollArea className="max-h-48">
               <div className="divide-y divide-border rounded-lg border border-border">
-                {departments.map((dept) => (
+                {categories.map((category) => (
                   <div
-                    key={dept.id}
+                    key={category.id}
                     className="flex items-center justify-between px-3 py-2"
                   >
-                    <span className="text-sm">{dept.name}</span>
+                    <span className="text-sm">{category.name}</span>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon-xs"
                       onClick={() =>
-                        setDeleteDeptTarget({ id: dept.id, name: dept.name })
+                        setDeleteCategoryTarget({
+                          id: category.id,
+                          name: category.name,
+                        })
                       }
-                      aria-label={`${dept.name} を削除`}
+                      aria-label={`${category.name} を削除`}
                       className="text-muted-foreground hover:text-destructive"
                     >
                       <Trash2 />
                     </Button>
                   </div>
                 ))}
-                {departments.length === 0 && (
+                {categories.length === 0 && (
                   <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-                    事業部がありません
+                    カテゴリがありません
                   </div>
                 )}
               </div>
             </ScrollArea>
             <InputGroup>
               <InputGroupInput
-                id="settings-new-dept"
-                placeholder="新しい事業部名"
-                value={newDeptName}
-                onChange={(e) => setNewDeptName(e.target.value)}
+                id="settings-new-category"
+                placeholder="新しいカテゴリ名"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddDept();
+                  if (e.key === "Enter") handleAddCategory();
                 }}
               />
               <InputGroupAddon align="inline-end">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleAddDept}
-                  disabled={!newDeptName.trim()}
+                  onClick={handleAddCategory}
+                  disabled={!newCategoryName.trim()}
                 >
                   <Plus data-icon="inline-start" />
                   追加
@@ -120,7 +125,10 @@ export function SettingsDialogContent({
             <FieldLabel htmlFor="settings-workspace-name">
               ワークスペース名
             </FieldLabel>
-            <Input id="settings-workspace-name" defaultValue="採用管理" />
+            <Input
+              id="settings-workspace-name"
+              defaultValue="プロジェクト管理"
+            />
           </Field>
         </FieldGroup>
 
@@ -130,16 +138,17 @@ export function SettingsDialogContent({
       </DialogContent>
 
       <DeleteConfirmDialog
-        open={deleteDeptTarget !== null}
+        open={deleteCategoryTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteDeptTarget(null);
+          if (!open) setDeleteCategoryTarget(null);
         }}
-        title="事業部を削除しますか？"
-        itemName={deleteDeptTarget?.name ?? ""}
+        title="カテゴリを削除しますか？"
+        itemName={deleteCategoryTarget?.name ?? ""}
+        description={`「${deleteCategoryTarget?.name ?? ""}」を削除します。配下のプロジェクトも含めて完全に削除され、元に戻せません。`}
         onConfirm={() => {
-          if (deleteDeptTarget) {
-            onDeleteDepartment(deleteDeptTarget.id);
-            setDeleteDeptTarget(null);
+          if (deleteCategoryTarget) {
+            onDeleteCategory(deleteCategoryTarget.id);
+            setDeleteCategoryTarget(null);
           }
         }}
       />

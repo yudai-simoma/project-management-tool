@@ -62,6 +62,10 @@ npm run format       # Prettier
 npm run check:radius # 角丸ドリフト検出
 ```
 
+## バックエンド実装フェーズ
+
+モック実装フェーズ完了後、DB接続・認証・AI実接続を含む**バックエンド実装フェーズ**に着手した。セクションごとに内容がぶれないよう、作業は [docs/backend-implementation-plan.md](docs/backend-implementation-plan.md) のプロンプト単位で進める。着手前に必ず `docs/mock-implementation-plan.md`（特に §2.4〜§2.6, §8）を読み、既存の意思決定と矛盾しない形で進めること。
+
 ## 配布制約
 
 - `.distignore` で `openspec/` `AGENTS.md` は配布対象外（受講生の Gitea リポジトリに含まれない）
@@ -70,5 +74,4 @@ npm run check:radius # 角丸ドリフト検出
 
 ## やらないこと
 
-- DB 接続・認証（次フェーズ）
 - `react-beautiful-dnd`（廃止ライブラリ）への置き換え

@@ -1,18 +1,17 @@
 "use client";
 
 /**
- * Workspace: 4 ペインの親コンポーネント。
+ * Workspace: 4 ペインの親コンポーネント（社内プロジェクト管理ドメイン）。
  *
- * - Pane 1〜4 の state（candidates / selectedCandidateId / selectedDetail）を
- *   保持し、各ペインに props として渡す。
- *   `previousDetail` state は ADR-0011 §6 大決定 D で削除した（戻り先が候詳に固定
- *   されたため、直前の詳細を 1 段階覚える概念が不要になった）。
- * - Pane 3 = 候補者ダッシュボード（人物軸の編集: ヘッダー帯 + 採用条件 + 選考フロー）
- * - Pane 4 = ステージ軸の編集（選考ステージ詳細のみ）
- *   ADR-0015 §9 大決定 G により、Pane 4 のデフォルト state は `null`
- *   （ステージ未選択 = 畳み状態）。◀ ボタンは撤廃。
+ * - Pane 1〜4 の state（categories / members / projects / selectedProjectId /
+ *   selectedCategoryId / selectedDetail / pane4Tab）を保持し、各ペインに props として渡す。
+ * - Pane 1 = プロジェクトカテゴリ → プロジェクトの階層（`CategoryPane`）。カテゴリ選択は
+ *   実際に Pane 2 を絞り込む
+ * - Pane 2 = プロジェクト一覧、ステータス別カンバン（`ProjectListPane`）
+ * - Pane 3 = 選択プロジェクトのダッシュボード（`ProjectDashboardPane`、読む場所）
+ * - Pane 4 = タブ切替式の詳細編集（`ProjectDetailPane`、詳細タブ / AIアシスタントタブ）
  *
- * レイアウト構造（shadcn/ui Sidebar を採用、ADR-0006 §3/§5 を本実装で改訂）:
+ * レイアウト構造（shadcn/ui Sidebar を採用、採用管理サンプルの構造を踏襲）:
  *
  * ```
  * <SidebarProvider> (h-screen, defaultOpen, Cmd+B でトグル)
@@ -24,229 +23,185 @@
  * └────────────────────┴─┴──────────┴──────────┴──────────┘
  * ```
  *
- * - Pane 1 のみ画面最上端〜最下端まで届く chrome（折りたたみ可）
- * - GlobalHeader は Pane 1 を除く右側全幅（Pane 2 / Pane 3 / Pane 4 の上）に渡る
- * - Pane 4 はヘッダー直下から最下端まで
- * - Pane 1 折りたたみトグルは Pane 1 ヘッダー右端の `Pane1Toggle` 1 箇所
- *   （ADR-0006 §5 で計画していた GlobalHeader 側の SidebarTrigger は本実装で撤回）
- *
- * 仕様の出典:
- *   - openspec/decision/0006-pane-background-hierarchy-and-shadcn-inset-header.md
- *     §2（4 段階背景色階層）/ §4（保存ステータス削除）はそのまま採用
- *     §3（Pane 4 = 画面最上端〜最下端 / ヘッダーは中央エリアのみ）は本実装で再改訂
- *     §5（SidebarTrigger は GlobalHeader）も本実装で再改訂（Pane 1 ヘッダー側に集約）
- *   - openspec/decision/0009-drilldown-card-affordance.md（Pane 3 ドリルダウンカードの ▶ 規律）
- *   - openspec/changes/add-4pane-workspace-template/specs/workspace-template/spec.md
- *   - openspec/changes/add-4pane-workspace-template/design.md D51〜D56 / D65
+ * 仕様の出典: `docs/mock-implementation-plan.md` §2.2（4ペイン構成）・§6.5（本ファイルの
+ * state/handler 対応表）。
  */
 
 import { useState, useCallback, useMemo } from "react";
 
 import {
-  type Profile,
-  type AxisKey,
-  type StageKey,
-  type Department,
-  type Candidate,
-  type Group,
+  type Category,
+  type Member,
+  type Project,
+  type ProjectStatusKey,
   type SelectedDetail,
-  STAGE_ORDER,
+  type Pane4Tab,
+  type MainView,
+  type Group,
+  STATUS_ORDER,
 } from "@/lib/schema";
+import { createEmptyProject, createMinimalTask } from "@/lib/data/factories";
 import {
-  createMinimalProfile,
-  createMinimalScorecard,
-} from "@/lib/data/factories";
-import { getCandidateAverageScore } from "@/lib/computed/scorecards";
-import { ARCHIVED_GROUP_LABEL, STAGE_LABELS } from "@/lib/labels";
+  getProjectProgress,
+  deriveDeadlineRisk,
+} from "@/lib/computed/projects";
+import { STATUS_LABELS } from "@/lib/labels";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { GlobalHeader } from "@/components/workspace/GlobalHeader";
-import { PositionPane } from "@/components/workspace/PositionPane";
-import { CandidateListPane } from "@/components/workspace/CandidateListPane";
-import { CandidateDashboardPane } from "@/components/workspace/CandidateDashboardPane";
-import { CandidateDetailPane } from "@/components/workspace/CandidateDetailPane";
+import { CategoryPane } from "@/components/workspace/CategoryPane";
+import { ProjectListPane } from "@/components/workspace/ProjectListPane";
+import { ProjectDashboardPane } from "@/components/workspace/ProjectDashboardPane";
+import { ProjectDetailPane } from "@/components/workspace/ProjectDetailPane";
+import { PortfolioDashboardPane } from "@/components/workspace/PortfolioDashboardPane";
 
-// ========== UI 内部型 ==========
-//
-// 種データは `data/*.json` → Server Component（app/page.tsx）で Zod parse → props で受け取る。
-// ヘルパー関数（createMinimalProfile / createMinimalScorecard）は `lib/data/factories.ts`。
-// Pane 2 の表示用派生型 (CandidateRow / Group) と `SelectedDetail` 型は
-// `lib/schema.ts` に集約（複数ペインで共有するため）。
-// Pane 4 モード 2 用の `EditableScorecardKey` は
-// `components/workspace/CandidateDetailPane.tsx` 内部の閉じた型。
-
-// `updateScorecardField` の field 引数で使う key の union 型。Pane 4 内部の
-// `EditableScorecardKey` と同形。CandidateDetailPane 内部に閉じた型として扱い
-// たいため export せず、親側で同じ形を再宣言して持つ。
-//
-// ADR-0014「shadcn 標準フォームによる Pane 4 編集 UI」で `comment` / `summary`
-// を `InlineTextareaField` で編集対象に追加したため、旧 4 フィールドから 6 フィールド
-// に拡張。CandidateDetailPane.tsx 側の同型宣言（line 70-76）と同期させる。
-// `onUpdateScorecardField` 実装本体は `[field]: value` のスプレッドで
-// 動作するため、ロジックの追加修正は不要。
-type EditableScorecardKey =
-  | "date"
-  | "format"
-  | "interviewer"
-  | "decision"
-  | "comment"
-  | "summary";
+// `onUpdateTaskField` の field 引数で使う key の union 型。
+// ProjectDetailPane.tsx 内部の同形の型と同期させる規律（export はしない）。
+type EditableTaskKey = "title" | "dueDate" | "assigneeId" | "memo";
 
 type WorkspaceProps = {
-  initialDepartments: Department[];
-  initialCandidates: Candidate[];
+  initialCategories: Category[];
+  initialMembers: Member[];
+  initialProjects: Project[];
   workspace: { name: string; icon: string };
 };
 
 export function Workspace({
-  initialDepartments,
-  initialCandidates,
+  initialCategories,
+  initialMembers,
+  initialProjects,
   workspace,
 }: WorkspaceProps) {
-  const [departments, setDepartments] =
-    useState<Department[]>(initialDepartments);
-  const [candidates, setCandidates] = useState<Candidate[]>(initialCandidates);
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string>("c2");
+  const [categories, setCategories] = useState<Category[]>(initialCategories);
+  const [members] = useState<Member[]>(initialMembers);
+  const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(
+    initialProjects[0]?.id ?? "",
+  );
+  // Pane 1 ↔ Pane 2 の実フィルタ。null = 「すべてのカテゴリ」。
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    null,
+  );
   const [selectedDetail, setSelectedDetail] = useState<SelectedDetail>(null);
+  const [pane4Tab, setPane4Tab] = useState<Pane4Tab>("detail");
   const [scrollAnchor, setScrollAnchor] = useState<string | null>(null);
-  // ユーザーが手動で Pane 4 を畳んだか。ステージ選択は保持しつつ畳む用途。
-  const [pane4ManuallyClosed, setPane4ManuallyClosed] = useState(false);
-  // Pane 3 ヘッダー帯（Collapsible）の開閉。候補者切替で閉じ、新規追加で開く。
-  const [applicationInfoOpen, setApplicationInfoOpen] = useState(false);
+  // Pane 4 の開閉状態。タスク選択だけでなく、プロジェクト選択時にも
+  // AI アシスタントタブへすぐ到達できるよう、selectedDetail から独立させている。
+  const [pane4Open, setPane4Open] = useState(false);
+  // Pane 3 概要ヘッダー帯（Collapsible）の開閉。プロジェクト切替時は開き直す。
+  const [overviewOpen, setOverviewOpen] = useState(true);
+  // GlobalHeader のビュー切替（通常のワークスペース／全体ダッシュボード）。
+  const [mainView, setMainView] = useState<MainView>("workspace");
 
-  // Pane 4 の展開状態を派生計算（ADR-0015 §9 大決定 G）。
-  // selectedDetail !== null かつ手動で畳んでいない → 開いている。
-  const pane4Open = selectedDetail !== null && !pane4ManuallyClosed;
+  // アクティブプロジェクト。プロジェクトが 1 件も無い場合は null（削除で全件無くなった場合の
+  // 保険）。Pane 3 / Pane 4 は null のとき空状態を表示する。
+  const activeProject: Project | null =
+    projects.find((p) => p.id === selectedProjectId) ?? projects[0] ?? null;
 
-  // アクティブ候補者を取得。`INITIAL_CANDIDATES` が常に最低 1 名持つ前提だが、
-  // 万一 find が undefined を返す（未来に candidates の削除機能が入った場合等）
-  // ケースに備えて先頭候補者にフォールバックする。
-  const activeCandidate =
-    candidates.find((c) => c.id === selectedCandidateId) ?? candidates[0];
-  const profile = activeCandidate.profile;
-  const scorecards = activeCandidate.scorecards;
+  const activeProjectCategoryName = activeProject
+    ? (categories.find((c) => c.id === activeProject.categoryId)?.name ?? "")
+    : "";
 
-  // Mode1ProfileDetail は `setProfile: React.Dispatch<React.SetStateAction<Profile>>`
-  // を期待している（採用案 X）。子コンポーネント側の signature を変えないために、
-  // candidates 配列を更新するアダプタをここで作る。
-  // 関数形 (p => next) と値形 (next) の両方に対応する。
-  const setProfile = useCallback<React.Dispatch<React.SetStateAction<Profile>>>(
-    (action) => {
-      setCandidates((prev) =>
-        prev.map((c) => {
-          if (c.id !== selectedCandidateId) return c;
-          const next =
-            typeof action === "function" ? action(c.profile) : action;
-          return { ...c, profile: next };
-        }),
-      );
-    },
-    [selectedCandidateId],
-  );
+  // ===== Pane 1: カテゴリ選択（実フィルタ） =====
 
-  const openDetail = useCallback(
-    (next: SelectedDetail, anchor?: string) => {
-      if (next?.type === "stage") {
-        setCandidates((prev) =>
-          prev.map((c) => {
-            if (c.id !== selectedCandidateId) return c;
-            if (c.scorecards.some((s) => s.stage === next.stage)) return c;
-            return {
-              ...c,
-              scorecards: [...c.scorecards, createMinimalScorecard(next.stage)],
-            };
-          }),
-        );
-      }
-      setSelectedDetail(next);
-      setScrollAnchor(anchor ?? null);
-      setPane4ManuallyClosed(false);
-    },
-    [selectedCandidateId],
-  );
-
-  // Pane 2 の候補者行クリックでアクティブ候補者を切り替える。
-  // - selectedDetail が「ステージ詳細」だった場合、新候補者にそのステージの
-  //   scorecard が無ければ Pane 4 を **候補者詳細にフォールバック**する
-  //   （ADR-0011 §7 大決定 E、旧 null フォールバックを撤回）。c2 以外は
-  //   scorecards: [] のため、c2 → 別候補者の切替時はほぼ常に候詳へフォールバック。
-  // - selectedDetail が「候補者詳細」のときは維持してよい（profile はどの候補者にも
-  //   必ず存在する）。
-  // - previousDetail state は ADR-0011 §6 大決定 D で削除済みのため、リセット不要。
-  const selectCandidate = useCallback((id: string) => {
-    setSelectedCandidateId(id);
-    setSelectedDetail(null);
-    setApplicationInfoOpen(false);
-    setPane4ManuallyClosed(false);
+  const selectCategory = useCallback((categoryId: string | null) => {
+    setSelectedCategoryId(categoryId);
+    // ダッシュボード表示中に Pane 1 を操作したら、迷わず作業に戻れるようワークスペース表示へ。
+    setMainView("workspace");
   }, []);
 
-  const addCandidate = useCallback((stage: StageKey, name: string) => {
-    const newId = `c-${Date.now()}`;
-    const newCandidate: Candidate = {
-      id: newId,
-      profile: createMinimalProfile(name),
-      scorecards: [],
-      stage,
-      archived: false,
-    };
-    setCandidates((prev) => [...prev, newCandidate]);
-    setSelectedCandidateId(newId);
+  // ===== プロジェクト選択（共通ロジック） =====
+
+  const selectProject = useCallback((id: string) => {
+    setSelectedProjectId(id);
     setSelectedDetail(null);
-    setApplicationInfoOpen(true);
-    setPane4ManuallyClosed(false);
+    // タスク未選択の状態で開くため、まず取りかかりやすい AI アシスタントタブを開く。
+    setPane4Tab("ai");
+    setPane4Open(true);
+    setOverviewOpen(true);
+    setMainView("workspace");
   }, []);
 
-  // 候補者をアーカイブ（論理削除）する。データは残し `archived: true` を立てる。
-  // 復元は `restoreCandidate` から、もしくは Pane 2「アーカイブ済み」グループの
-  // 「復元」ボタン経由。アクティブ候補者をアーカイブした場合は、非 archived の
-  // 先頭候補者にフォールバックし、ステージ詳細（Pane 4）はクリアする。
-  const archiveCandidate = useCallback((id: string) => {
-    setCandidates((prev) => {
-      const next = prev.map((c) =>
-        c.id === id ? { ...c, archived: true } : c,
-      );
-      setSelectedCandidateId((prevId) => {
-        if (prevId !== id) return prevId;
-        const fallback = next.find((c) => !c.archived);
-        return fallback ? fallback.id : "";
+  // Pane 1 でプロジェクト（leaf）をクリックしたときのみ、所属カテゴリでの
+  // 絞り込みも同時に有効にする（§2.2 決定）。Pane 2 からの選択はフィルタに触らない。
+  const selectProjectFromPane1 = useCallback(
+    (id: string) => {
+      const project = projects.find((p) => p.id === id);
+      if (project) setSelectedCategoryId(project.categoryId);
+      selectProject(id);
+    },
+    [projects, selectProject],
+  );
+
+  // ===== プロジェクトの追加・削除・移動 =====
+
+  const addProject = useCallback(
+    (
+      categoryId: string,
+      name: string,
+      status: ProjectStatusKey = "planning",
+    ) => {
+      const newProject = createEmptyProject(categoryId, name, status);
+      setProjects((prev) => [...prev, newProject]);
+      setSelectedCategoryId(categoryId);
+      selectProject(newProject.id);
+    },
+    [selectProject],
+  );
+
+  // Pane 1 の各カテゴリグループの「+」から呼ばれる。常時有効、status は "planning" 固定。
+  const addProjectForCategory = useCallback(
+    (categoryId: string, name: string) =>
+      addProject(categoryId, name, "planning"),
+    [addProject],
+  );
+
+  // Pane 2 のステータス列の「+」から呼ばれる。`canAddProject`（selectedCategoryId !== null）
+  // で事前にガードされているが、防御的に selectedCategoryId の有無を再確認する。
+  const addProjectForStatus = useCallback(
+    (status: ProjectStatusKey, name: string) => {
+      if (!selectedCategoryId) return;
+      addProject(selectedCategoryId, name, status);
+    },
+    [addProject, selectedCategoryId],
+  );
+
+  // プロジェクトの削除は Pane 2 のみ（§2.2 決定、Pane 1 に削除導線は置かない）。
+  const deleteProject = useCallback(
+    (id: string) => {
+      setProjects((prev) => {
+        const next = prev.filter((p) => p.id !== id);
+        if (id === selectedProjectId) {
+          setSelectedProjectId(next[0]?.id ?? "");
+          setSelectedDetail(null);
+        }
+        return next;
       });
-      return next;
-    });
-    setSelectedDetail(null);
-    setPane4ManuallyClosed(false);
-  }, []);
+    },
+    [selectedProjectId],
+  );
 
-  // アーカイブ済み候補者を元のステージに復元する。`stage` は archived 中も保持
-  // しているので、そのステージへ戻すだけでよい。
-  const restoreCandidate = useCallback((id: string) => {
-    setCandidates((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, archived: false } : c)),
-    );
-  }, []);
-
-  // 候補者を別ステージへ移動 / 同ステージ内で並び替え。
+  // プロジェクトを別ステータスへ移動 / 同ステータス内で並び替え。
   //
-  // `toStage` は移動先のステージキー。`toIndex` はそのステージグループ内での
-  // 0-origin の挿入位置。配列順を SSoT としているため、candidates 配列上の
-  // 絶対インデックスに変換して `splice` 相当の挿入を行う。
-  //
-  // 同ステージ内ドラッグ・別ステージへのドラッグの両方をこの 1 関数で扱う。
-  // archived 候補者は対象外（DnD はアクティブな候補者のみ可能）。
-  const moveCandidate = useCallback(
-    (id: string, toStage: StageKey, toIndex: number) => {
-      setCandidates((prev) => {
-        const subjectIndex = prev.findIndex((c) => c.id === id);
+  // `toIndex` は ProjectListPane 側で計算された、**現在のカテゴリフィルタ後**の
+  // 表示上のインデックスなので、projects 配列上の絶対インデックスに変換する際にも
+  // 同じフィルタ条件（selectedCategoryId）を適用してカウントする必要がある。
+  const moveProject = useCallback(
+    (id: string, toStatus: ProjectStatusKey, toIndex: number) => {
+      setProjects((prev) => {
+        const subjectIndex = prev.findIndex((p) => p.id === id);
         if (subjectIndex < 0) return prev;
         const subject = prev[subjectIndex];
-        if (subject.archived) return prev;
 
         const without = prev.filter((_, i) => i !== subjectIndex);
-        const updated: Candidate = { ...subject, stage: toStage };
+        const updated: Project = { ...subject, status: toStatus };
 
         let count = 0;
         let absInsertAt = without.length;
         for (let i = 0; i < without.length; i++) {
-          const c = without[i];
-          if (!c.archived && c.stage === toStage) {
+          const p = without[i];
+          const visible =
+            selectedCategoryId === null || p.categoryId === selectedCategoryId;
+          if (visible && p.status === toStatus) {
             if (count === toIndex) {
               absInsertAt = i;
               break;
@@ -261,197 +216,219 @@ export function Workspace({
         ];
       });
     },
-    [],
+    [selectedCategoryId],
   );
 
-  const addDepartment = useCallback((name: string) => {
-    setDepartments((prev) => [
-      ...prev,
-      { id: `d-${Date.now()}`, name, positions: [] },
-    ]);
+  // ===== カテゴリの追加・削除（SettingsDialog 用） =====
+
+  const addCategory = useCallback((name: string) => {
+    setCategories((prev) => [...prev, { id: `cat-${Date.now()}`, name }]);
   }, []);
 
-  const deleteDepartment = useCallback((deptId: string) => {
-    setDepartments((prev) => prev.filter((d) => d.id !== deptId));
+  const deleteCategory = useCallback((categoryId: string) => {
+    setCategories((prev) => prev.filter((c) => c.id !== categoryId));
+    setSelectedCategoryId((prev) => (prev === categoryId ? null : prev));
   }, []);
 
-  const addPosition = useCallback((deptId: string, posName: string) => {
-    setDepartments((prev) =>
-      prev.map((d) =>
-        d.id === deptId
-          ? {
-              ...d,
-              positions: [
-                ...d.positions,
-                { id: `p-${Date.now()}`, name: posName, count: 0 },
-              ],
-            }
-          : d,
-      ),
-    );
-  }, []);
+  // ===== タスクの編集（アクティブプロジェクトのタスクを操作） =====
 
-  const deletePosition = useCallback((deptId: string, posId: string) => {
-    setDepartments((prev) =>
-      prev.map((d) =>
-        d.id === deptId
-          ? { ...d, positions: d.positions.filter((p) => p.id !== posId) }
-          : d,
-      ),
-    );
-  }, []);
-
-  // 評価観点 ★ の編集ハンドラ。フェーズ 3A から「アクティブ候補者」の
-  // scorecards を更新する形に変更（candidates 配列の中の該当候補者だけを差し替え）。
-  const updateAxisScore = useCallback(
-    (stage: StageKey, axis: AxisKey, value: number | null) => {
-      setCandidates((prev) =>
-        prev.map((c) =>
-          c.id === selectedCandidateId
-            ? {
-                ...c,
-                scorecards: c.scorecards.map((s) =>
-                  s.stage === stage
-                    ? { ...s, axisScores: { ...s.axisScores, [axis]: value } }
-                    : s,
+  const updateTaskField = useCallback(
+    (taskId: string, field: EditableTaskKey, value: string) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id !== selectedProjectId
+            ? p
+            : {
+                ...p,
+                tasks: p.tasks.map((t) =>
+                  t.id === taskId ? { ...t, [field]: value } : t,
                 ),
-              }
-            : c,
+              },
         ),
       );
     },
-    [selectedCandidateId],
+    [selectedProjectId],
   );
 
-  // Pane 4 モード 2「メタ情報」の inline edit から呼ばれる。
-  // `decision` だけ undefined を許すため、空文字は undefined として扱う
-  // （`MetaRow` 廃止前の "未判定" 表示の代替: `EditableFieldRow` 側で空 = "未設定"）。
-  // フェーズ 3A: アクティブ候補者の scorecards を更新する形に変更。
-  const updateScorecardField = useCallback(
-    (stage: StageKey, field: EditableScorecardKey, value: string) => {
-      setCandidates((prev) =>
-        prev.map((c) =>
-          c.id === selectedCandidateId
-            ? {
-                ...c,
-                scorecards: c.scorecards.map((s) => {
-                  if (s.stage !== stage) return s;
-                  if (field === "decision") {
-                    const trimmed = value.trim();
-                    return {
-                      ...s,
-                      decision: trimmed === "" ? undefined : trimmed,
-                    };
-                  }
-                  return { ...s, [field]: value };
-                }),
-              }
-            : c,
+  // Pane 3 のチェックボックス、および Pane 4「詳細」タブの完了トグルの両方から呼ばれる。
+  const toggleTaskDone = useCallback(
+    (taskId: string) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id !== selectedProjectId
+            ? p
+            : {
+                ...p,
+                tasks: p.tasks.map((t) =>
+                  t.id === taskId ? { ...t, done: !t.done } : t,
+                ),
+              },
         ),
       );
     },
-    [selectedCandidateId],
+    [selectedProjectId],
   );
 
-  // Pane 4 内の `useEffect` 依存安定化のため、Workspace 側でメモ化して props で渡す。
+  // Pane 3「+ タスク追加」、および Pane 4 AIアシスタントタブの両方から呼ばれる。
+  const addTask = useCallback(
+    (title: string) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id !== selectedProjectId
+            ? p
+            : { ...p, tasks: [...p.tasks, createMinimalTask(title)] },
+        ),
+      );
+    },
+    [selectedProjectId],
+  );
+
+  // タスクの削除は Pane 4「詳細」タブの手動削除のみ（AI アシスタントからは実行不可、§2.5 決定）。
+  const deleteTask = useCallback(
+    (taskId: string) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id !== selectedProjectId
+            ? p
+            : { ...p, tasks: p.tasks.filter((t) => t.id !== taskId) },
+        ),
+      );
+      setSelectedDetail((prev) =>
+        prev?.type === "task" && prev.taskId === taskId ? null : prev,
+      );
+    },
+    [selectedProjectId],
+  );
+
+  // Pane 3 概要ヘッダー帯の期限編集（`InlineDateField`）から呼ばれる。
+  const updateDeadline = useCallback(
+    (deadline: string) => {
+      setProjects((prev) =>
+        prev.map((p) => (p.id !== selectedProjectId ? p : { ...p, deadline })),
+      );
+    },
+    [selectedProjectId],
+  );
+
+  // Pane 3 のタスク行クリックで Pane 4「詳細」タブを開く。
+  const openDetail = useCallback((next: SelectedDetail, anchor?: string) => {
+    setSelectedDetail(next);
+    setScrollAnchor(anchor ?? null);
+    setPane4Tab("detail");
+    setPane4Open(true);
+  }, []);
+
+  const pane4TabChange = useCallback((tab: Pane4Tab) => setPane4Tab(tab), []);
   const consumeScrollAnchor = useCallback(() => setScrollAnchor(null), []);
-  const togglePane4 = useCallback(() => setPane4ManuallyClosed((v) => !v), []);
+  const togglePane4 = useCallback(() => setPane4Open((v) => !v), []);
 
-  const positionTitle = "フロントエンドエンジニア";
-  const departmentTitle = "プロダクト開発";
+  // Pane 2 のステータス別グルーピング。selectedCategoryId によるフィルタ後に集計する。
+  // 4 ステータス列は常に表示する（空列でも D&D の戻し先として残す）。
+  const projectGroups: Group[] = useMemo(() => {
+    const filtered =
+      selectedCategoryId === null
+        ? projects
+        : projects.filter((p) => p.categoryId === selectedCategoryId);
 
-  const candidateGroups: Group[] = useMemo(() => {
-    // ステージグループは常に 4 段階すべて表示する。空ステージも残すことで、
-    // 「最後の 1 名を別ステージへ動かしたら戻し先が消える」事故を防ぐ
-    // （ADR-006 §2-2 の補足）。
-    const stageGroups: Group[] = STAGE_ORDER.map((stage) => ({
-      kind: "stage" as const,
-      stage,
-      label: STAGE_LABELS[stage],
-      items: candidates
-        .filter((c) => !c.archived && c.stage === stage)
-        .map((c) => ({
-          id: c.id,
-          name: c.profile.name,
-          averageScore: getCandidateAverageScore(c),
+    return STATUS_ORDER.map((status) => ({
+      status,
+      label: STATUS_LABELS[status],
+      items: filtered
+        .filter((p) => p.status === status)
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          progress: getProjectProgress(p),
+          deadline: p.deadline,
+          deadlineRisk: deriveDeadlineRisk(p.deadline),
         })),
     }));
-
-    const archivedItems = candidates
-      .filter((c) => c.archived)
-      .map((c) => ({
-        id: c.id,
-        name: c.profile.name,
-        averageScore: getCandidateAverageScore(c),
-      }));
-
-    if (archivedItems.length === 0) return stageGroups;
-    return [
-      ...stageGroups,
-      { kind: "archived" as const, label: ARCHIVED_GROUP_LABEL, items: archivedItems },
-    ];
-  }, [candidates]);
+  }, [projects, selectedCategoryId]);
 
   return (
     // shadcn/ui の SidebarProvider が外側を取り、Pane 1 (`<Sidebar>`) を全高で固定
     // 表示する。SidebarInset が右側ブロック（GlobalHeader + Pane 2/3/4）を担う。
-    // Cmd+B のキーバインドは SidebarProvider 側で標準実装されている。
-    // SidebarProvider のラッパー div は既定 `min-h-svh w-full`。雛形では
-    // ビューポート高に固定したいので h-screen を併記し、ペイン内で min-h-0 が
-    // 効くようにする（既存 ScrollArea の挙動と整合）。
     <SidebarProvider
       defaultOpen
       className="h-screen w-full overflow-hidden bg-background text-foreground"
     >
-      <PositionPane
+      <CategoryPane
         workspaceName={workspace.name}
-        departments={departments}
-        selectedPositionName={positionTitle}
-        onAddPosition={addPosition}
-        onDeletePosition={deletePosition}
+        categories={categories}
+        projects={projects}
+        selectedCategoryId={selectedCategoryId}
+        selectedProjectId={selectedProjectId}
+        onSelectCategory={selectCategory}
+        onSelectProject={selectProjectFromPane1}
+        onAddProject={addProjectForCategory}
       />
       <SidebarInset className="flex min-w-0 flex-col bg-background">
         <GlobalHeader
-          departmentTitle={departmentTitle}
-          positionTitle={positionTitle}
-          candidateName={profile.name}
-          departments={departments}
-          onAddDepartment={addDepartment}
-          onDeleteDepartment={deleteDepartment}
+          categoryName={activeProjectCategoryName}
+          projectName={activeProject?.name ?? ""}
+          categories={categories}
+          onAddCategory={addCategory}
+          onDeleteCategory={deleteCategory}
+          mainView={mainView}
+          onMainViewChange={setMainView}
         />
         {/* SidebarInset 自体が <main> を出すので、内側は <div> で組み、
-            Pane 2 / Pane 3 / Pane 4 を横並びにする。 */}
+            Pane 2 / Pane 3 / Pane 4（もしくは全体ダッシュボード）を横並びにする。 */}
         <div className="flex min-h-0 flex-1">
-          <CandidateListPane
-            groups={candidateGroups}
-            selectedCandidateId={selectedCandidateId}
-            onSelectCandidate={selectCandidate}
-            onAddCandidate={addCandidate}
-            onArchiveCandidate={archiveCandidate}
-            onRestoreCandidate={restoreCandidate}
-            onMoveCandidate={moveCandidate}
-          />
-          <CandidateDashboardPane
-            profile={profile}
-            scorecards={scorecards}
-            selectedDetail={selectedDetail}
-            onOpenDetail={openDetail}
-            setProfile={setProfile}
-            applicationInfoOpen={applicationInfoOpen}
-            onApplicationInfoOpenChange={setApplicationInfoOpen}
-            selectedCandidateId={selectedCandidateId}
-          />
-          <CandidateDetailPane
-            selectedCandidateId={selectedCandidateId}
-            scorecards={scorecards}
-            selectedDetail={selectedDetail}
-            scrollAnchor={scrollAnchor}
-            onScrollAnchorConsumed={consumeScrollAnchor}
-            onUpdateAxis={updateAxisScore}
-            onUpdateScorecardField={updateScorecardField}
-            pane4Open={pane4Open}
-            onTogglePane4={togglePane4}
-          />
+          {mainView === "dashboard" ? (
+            <PortfolioDashboardPane projects={projects} />
+          ) : (
+            <>
+              <ProjectListPane
+                groups={projectGroups}
+                selectedProjectId={selectedProjectId}
+                onSelectProject={selectProject}
+                onAddProject={addProjectForStatus}
+                onDeleteProject={deleteProject}
+                onMoveProject={moveProject}
+                canAddProject={selectedCategoryId !== null}
+              />
+              {activeProject ? (
+                <>
+                  <ProjectDashboardPane
+                    project={activeProject}
+                    categoryName={activeProjectCategoryName}
+                    members={members}
+                    selectedDetail={selectedDetail}
+                    onOpenDetail={openDetail}
+                    onUpdateDeadline={updateDeadline}
+                    onToggleTaskDone={toggleTaskDone}
+                    onAddTask={addTask}
+                    overviewOpen={overviewOpen}
+                    onOverviewOpenChange={setOverviewOpen}
+                  />
+                  <ProjectDetailPane
+                    selectedProjectId={selectedProjectId}
+                    project={activeProject}
+                    members={members}
+                    selectedDetail={selectedDetail}
+                    scrollAnchor={scrollAnchor}
+                    onScrollAnchorConsumed={consumeScrollAnchor}
+                    onUpdateTaskField={updateTaskField}
+                    onToggleTaskDone={toggleTaskDone}
+                    onDeleteTask={deleteTask}
+                    onAddTask={addTask}
+                    pane4Open={pane4Open}
+                    onTogglePane4={togglePane4}
+                    pane4Tab={pane4Tab}
+                    onPane4TabChange={pane4TabChange}
+                  />
+                </>
+              ) : (
+                <section className="flex min-w-0 flex-1 items-center justify-center bg-canvas">
+                  <p className="text-sm text-muted-foreground">
+                    プロジェクトがありません。Pane 1 または Pane 2
+                    から追加してください。
+                  </p>
+                </section>
+              )}
+            </>
+          )}
         </div>
       </SidebarInset>
     </SidebarProvider>
