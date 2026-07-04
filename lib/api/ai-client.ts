@@ -5,7 +5,7 @@
 
 import { apiFetch } from "@/lib/api/http";
 import type { AiAction } from "@/lib/ai/tools";
-import type { GeminiModelConfig } from "@/lib/ai/model-config";
+import type { AiModelConfig } from "@/lib/ai/model-config";
 import type { Member, Project } from "@/lib/schema";
 
 // ===== APIキー設定（BYOK） =====
@@ -61,7 +61,7 @@ export type AiChatResponse = {
   reply: AiChatReply;
   actions: AiAction[];
   usage: AiChatUsage | null;
-  model: GeminiModelConfig;
+  model: AiModelConfig;
 };
 
 export function sendAiChatMessage(input: {

@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Check, Eye, EyeOff, KeyRound, Trash2 } from "lucide-react";
+import { Check, CircleHelp, Eye, EyeOff, KeyRound, Trash2 } from "lucide-react";
 
 import {
   clearApiKeyApi,
@@ -51,6 +51,7 @@ export function ApiKeySettingsDialog({
 }: ApiKeySettingsDialogProps) {
   const [apiKey, setApiKey] = useState("");
   const [visible, setVisible] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [pending, setPending] = useState(false);
@@ -113,6 +114,7 @@ export function ApiKeySettingsDialog({
           setSaved(false);
           setError(null);
           setApiKey("");
+          setHelpOpen(false);
         }
       }}
     >
@@ -128,7 +130,19 @@ export function ApiKeySettingsDialog({
 
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="gemini-api-key">APIキー</FieldLabel>
+            <div className="flex items-center gap-2">
+              <FieldLabel htmlFor="gemini-api-key">APIキー</FieldLabel>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-expanded={helpOpen}
+                onClick={() => setHelpOpen((v) => !v)}
+              >
+                <CircleHelp data-icon="inline-start" />
+                発行方法
+              </Button>
+            </div>
             <InputGroup>
               <InputGroupAddon>
                 <KeyRound />
@@ -159,7 +173,42 @@ export function ApiKeySettingsDialog({
                   ? "設定済みです。新しいキーを入力して保存すると上書きされます。"
                   : "未設定です。Google AI StudioなどでGeminiのAPIキーを取得して入力してください。"}
             </FieldDescription>
-            {error && <FieldDescription className="text-destructive">{error}</FieldDescription>}
+            {error && (
+              <FieldDescription className="text-destructive">
+                {error}
+              </FieldDescription>
+            )}
+            {helpOpen && (
+              <div className="flex flex-col gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">
+                  Gemini APIキーの発行手順
+                </p>
+                <ol className="flex list-decimal flex-col gap-1 pl-5">
+                  <li>Google AI Studio の API Keys ページを開きます。</li>
+                  <li>
+                    Googleアカウントでログインし、利用規約への同意が求められたら確認します。
+                  </li>
+                  <li>
+                    「Create API key」を押して、利用するGoogle
+                    Cloudプロジェクトを選びます。
+                  </li>
+                  <li>
+                    表示されたキーをコピーし、この入力欄に貼り付けて保存します。
+                  </li>
+                </ol>
+                <p>
+                  キーはパスワードと同じ扱いです。GitHub、提出物、画面共有に写さないでください。
+                </p>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  Google AI Studio を開く
+                </a>
+              </div>
+            )}
           </Field>
         </FieldGroup>
 

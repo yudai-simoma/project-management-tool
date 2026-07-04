@@ -17,6 +17,8 @@
  *    却下済みは `/rejected` へ、それ以外（未承認 = pending）は `/pending-approval` へ
  *    リダイレクトする。**プラットフォーム管理者はこのゲートを常に素通りする**
  *    （締め出し防止のフェイルセーフ）
+ *    課題提出用デモでは `approvalRequired: false` を渡すことで、この承認ゲートだけを
+ *    無効化できる（サインイン・組織所属チェックは維持する）。
  * 5. 承認済み（またはプラットフォーム管理者）が `/pending-approval`・`/rejected` に
  *    アクセスした場合は、組織所属状況に応じて `/` または `/onboarding` へ戻す
  * 6. サインイン済みだが組織未所属なら `/onboarding` へ、`/onboarding` 自体には
@@ -46,6 +48,8 @@ export function decideRouteGuard(params: {
   isRejectedRoute?: boolean;
   /** 既定値 `false`。サービス運営者（`lib/auth/platform-admin.ts`）かどうか。 */
   isPlatformAdmin?: boolean;
+  /** 既定値 `true`。`false` の場合、承認待ち/却下ゲートをスキップする。 */
+  approvalRequired?: boolean;
   /** 既定値 `"approved"`（承認ゲートを追加する前の既存呼び出し元との後方互換のため）。 */
   approvalStatus?: ApprovalStatus;
 }): RouteGuardAction {
@@ -58,6 +62,7 @@ export function decideRouteGuard(params: {
     isPendingApprovalRoute = false,
     isRejectedRoute = false,
     isPlatformAdmin = false,
+    approvalRequired = true,
     approvalStatus = "approved",
   } = params;
 
@@ -75,7 +80,8 @@ export function decideRouteGuard(params: {
     return { type: "next" };
   }
 
-  const isApprovalGateExempt = isPlatformAdmin || approvalStatus === "approved";
+  const isApprovalGateExempt =
+    !approvalRequired || isPlatformAdmin || approvalStatus === "approved";
 
   if (!isApprovalGateExempt) {
     if (approvalStatus === "rejected") {

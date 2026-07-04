@@ -2,8 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { generateText, stepCountIs } from "ai";
 import { NextResponse } from "next/server";
 
-import { getGeminiApiKey } from "@/lib/ai/api-key";
-import { createGeminiModel, getGeminiModelConfig } from "@/lib/ai/gemini";
+import { getAiApiKey } from "@/lib/ai/api-key";
+import { createAiModel, getAiModelConfig } from "@/lib/ai/model";
 import { buildChatSystemPrompt } from "@/lib/ai/prompts";
 import { buildAiTools, type AiAction } from "@/lib/ai/tools";
 import { requireOrgId } from "@/lib/api/auth";
@@ -23,8 +23,8 @@ export async function POST(request: Request) {
   if (!parsed.success) return zodErrorResponse(parsed.error);
 
   const { userId } = await auth();
-  const apiKey = await getGeminiApiKey(userId!);
-  const model = getGeminiModelConfig();
+  const apiKey = await getAiApiKey(userId!);
+  const model = getAiModelConfig();
   if (!apiKey) {
     return NextResponse.json({
       source: "fallback",
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await generateText({
-      model: createGeminiModel(apiKey),
+      model: createAiModel(apiKey),
       system: buildChatSystemPrompt({ project, categoryName, members }),
       messages: [
         ...history.map((h) => ({ role: h.role, content: h.content }) as const),

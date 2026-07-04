@@ -10,10 +10,18 @@
  * から必要な値を取り出し、判定結果に応じた `NextResponse` を組み立てるだけにする。
  */
 
-import { clerkClient, clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import {
+  clerkClient,
+  clerkMiddleware,
+  createRouteMatcher,
+} from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-import { getApprovalStatus, type ApprovalStatus } from "@/lib/auth/approval";
+import {
+  getApprovalStatus,
+  isApprovalRequired,
+  type ApprovalStatus,
+} from "@/lib/auth/approval";
 import { isPlatformAdminEmail } from "@/lib/auth/platform-admin";
 import { decideRouteGuard } from "@/lib/auth/route-guard";
 
@@ -53,6 +61,7 @@ export default clerkMiddleware(async (auth, req) => {
     isPendingApprovalRoute: isPendingApprovalRoute(req),
     isRejectedRoute: isRejectedRoute(req),
     isPlatformAdmin,
+    approvalRequired: isApprovalRequired(),
     approvalStatus,
   });
 

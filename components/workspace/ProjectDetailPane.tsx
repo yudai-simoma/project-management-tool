@@ -20,6 +20,7 @@ import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import { Send, Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import type { AiProviderId } from "@/lib/ai/model-config";
 import { Pane4Toggle } from "@/components/workspace/Pane4Toggle";
 import { Pane4Section } from "@/components/workspace/Pane4Section";
 import { DeleteConfirmDialog } from "@/components/workspace/DeleteConfirmDialog";
@@ -89,6 +90,7 @@ export type ProjectAiChatMessage =
     };
 
 export type ProjectAiChatModel = {
+  provider: AiProviderId;
   id: string;
   maxContextTokens: number;
 };

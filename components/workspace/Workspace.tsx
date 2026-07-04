@@ -49,6 +49,7 @@ import { createEmptyProject, createMinimalTask } from "@/lib/data/factories";
 import { findTaskById, getLargeTasks } from "@/lib/computed/projects";
 import { AI_CHAT_GREETING, PANE4_SECTION_IDS } from "@/lib/labels";
 import {
+  DEFAULT_AI_PROVIDER_ID,
   GEMINI_FLASH_LATEST_CONTEXT_TOKENS,
   GEMINI_FLASH_LATEST_MODEL_ID,
 } from "@/lib/ai/model-config";
@@ -102,6 +103,7 @@ function createInitialAiChatState(): ProjectAiChatState {
     ],
     tokenUsageTotal: 0,
     model: {
+      provider: DEFAULT_AI_PROVIDER_ID,
       id: GEMINI_FLASH_LATEST_MODEL_ID,
       maxContextTokens: GEMINI_FLASH_LATEST_CONTEXT_TOKENS,
     },

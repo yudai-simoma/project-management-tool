@@ -9,6 +9,25 @@
 
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
+/**
+ * 課題提出用のデモ環境などで、プラットフォーム管理者の承認を待たずに
+ * ワークスペースを確認できるようにするためのスイッチ。
+ *
+ * 既定は承認必須。Vercel の Environment Variables で
+ * `APPROVAL_REQUIRED=false` を設定した環境だけ承認ゲートを外す。
+ */
+export function isApprovalRequired(
+  value = process.env.APPROVAL_REQUIRED,
+): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return !(
+    normalized === "false" ||
+    normalized === "0" ||
+    normalized === "off" ||
+    normalized === "no"
+  );
+}
+
 export function getApprovalStatus(
   publicMetadata: { approvalStatus?: unknown } | null | undefined,
 ): ApprovalStatus {

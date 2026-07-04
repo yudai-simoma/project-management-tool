@@ -130,6 +130,19 @@ describe("decideRouteGuard: 会員承認制（/admin・/pending-approval・/reje
     ).toEqual({ type: "redirect", to: "/pending-approval" });
   });
 
+  it("承認ゲート無効のデモ環境では未承認（pending）でも通常ルートを素通しする", () => {
+    expect(
+      decideRouteGuard({
+        hasUserId: true,
+        hasOrgId: true,
+        isPublicAuthRoute: false,
+        isOnboardingRoute: false,
+        approvalRequired: false,
+        approvalStatus: "pending",
+      }),
+    ).toEqual({ type: "next" });
+  });
+
   it("未承認（pending）は /pending-approval 自体を素通しする", () => {
     expect(
       decideRouteGuard({
@@ -203,6 +216,20 @@ describe("decideRouteGuard: 会員承認制（/admin・/pending-approval・/reje
         isOnboardingRoute: false,
         isPendingApprovalRoute: true,
         approvalStatus: "approved",
+      }),
+    ).toEqual({ type: "redirect", to: "/" });
+  });
+
+  it("承認ゲート無効のデモ環境で /pending-approval にアクセスすると / へ戻す", () => {
+    expect(
+      decideRouteGuard({
+        hasUserId: true,
+        hasOrgId: true,
+        isPublicAuthRoute: false,
+        isOnboardingRoute: false,
+        isPendingApprovalRoute: true,
+        approvalRequired: false,
+        approvalStatus: "pending",
       }),
     ).toEqual({ type: "redirect", to: "/" });
   });

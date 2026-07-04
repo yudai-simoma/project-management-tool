@@ -98,9 +98,11 @@ export const updateTaskSchema = z
 
 // ===== AI（Gemini実接続、BYOK） =====
 
-export const geminiApiKeySchema = z.object({
+export const aiApiKeySchema = z.object({
   apiKey: z.string().min(1),
 });
+
+export const geminiApiKeySchema = aiApiKeySchema;
 
 export const aiSummaryRequestSchema = z.object({
   project: projectSchema,

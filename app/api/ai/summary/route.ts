@@ -2,8 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { generateText } from "ai";
 import { NextResponse } from "next/server";
 
-import { getGeminiApiKey } from "@/lib/ai/api-key";
-import { createGeminiModel } from "@/lib/ai/gemini";
+import { getAiApiKey } from "@/lib/ai/api-key";
+import { createAiModel } from "@/lib/ai/model";
 import { buildSummaryPrompt, buildSummarySystemPrompt } from "@/lib/ai/prompts";
 import { requireOrgId } from "@/lib/api/auth";
 import { readJsonBody, zodErrorResponse } from "@/lib/api/respond";
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return zodErrorResponse(parsed.error);
 
   const { userId } = await auth();
-  const apiKey = await getGeminiApiKey(userId!);
+  const apiKey = await getAiApiKey(userId!);
   if (!apiKey) {
     return NextResponse.json({
       source: "fallback",
@@ -31,13 +31,16 @@ export async function POST(request: Request) {
 
   try {
     const result = await generateText({
-      model: createGeminiModel(apiKey),
+      model: createAiModel(apiKey),
       system: buildSummarySystemPrompt(),
       prompt: buildSummaryPrompt(project, categoryName),
     });
     return NextResponse.json({ source: "gemini", summary: result.text.trim() });
   } catch (error) {
     console.error("[api/ai/summary]", error);
-    return NextResponse.json({ error: AI_SUMMARY_ERROR_MESSAGE }, { status: 502 });
+    return NextResponse.json(
+      { error: AI_SUMMARY_ERROR_MESSAGE },
+      { status: 502 },
+    );
   }
 }

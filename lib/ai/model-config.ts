@@ -1,4 +1,10 @@
-/** Gemini model ids and context-window metadata shared by server and client code. */
+/** AI provider/model ids and context-window metadata shared by server and client code. */
+
+export const AI_PROVIDER_GEMINI = "gemini";
+
+export type AiProviderId = typeof AI_PROVIDER_GEMINI;
+
+export const DEFAULT_AI_PROVIDER_ID = AI_PROVIDER_GEMINI;
 
 export const GEMINI_FLASH_LATEST_MODEL_ID = "gemini-flash-latest";
 
@@ -18,9 +24,20 @@ const GEMINI_CONTEXT_TOKENS_BY_MODEL_ID: Record<string, number> = {
 };
 
 export type GeminiModelConfig = {
+  provider: AiProviderId;
   id: string;
   maxContextTokens: number;
 };
+
+export type AiModelConfig = GeminiModelConfig;
+
+export function parseAiProviderId(
+  value: string | null | undefined,
+): AiProviderId | null {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return DEFAULT_AI_PROVIDER_ID;
+  return normalized === AI_PROVIDER_GEMINI ? AI_PROVIDER_GEMINI : null;
+}
 
 export function getGeminiContextTokens(modelId: string): number {
   return (

@@ -1,5 +1,5 @@
 /**
- * Gemini APIキー（BYOK）の保存先。Clerkユーザーの private metadata に保存する
+ * AI APIキー（BYOK）の保存先。Clerkユーザーの private metadata に保存する
  * （サーバーサイドのみアクセス可、`docs/mock-implementation-plan.md` §2.5 決定）。
  *
  * `clerkClient()` はサーバー専用（`@clerk/nextjs/server`）のため、Route Handler
@@ -8,27 +8,39 @@
 
 import { clerkClient } from "@clerk/nextjs/server";
 
-const METADATA_KEY = "geminiApiKey";
+import { getAiModelConfig } from "@/lib/ai/model";
+import { AI_PROVIDER_GEMINI, type AiProviderId } from "@/lib/ai/model-config";
 
-/** 保存済みのAPIキーを返す。未設定（空文字含む）なら `null`。 */
-export async function getGeminiApiKey(userId: string): Promise<string | null> {
+const METADATA_KEY_BY_PROVIDER: Record<AiProviderId, string> = {
+  [AI_PROVIDER_GEMINI]: "geminiApiKey",
+};
+
+function getMetadataKey(): string {
+  return METADATA_KEY_BY_PROVIDER[getAiModelConfig().provider];
+}
+
+/** 現在の provider 用に保存済みのAPIキーを返す。未設定（空文字含む）なら `null`。 */
+export async function getAiApiKey(userId: string): Promise<string | null> {
   const client = await clerkClient();
   const user = await client.users.getUser(userId);
-  const value = user.privateMetadata[METADATA_KEY];
+  const value = user.privateMetadata[getMetadataKey()];
   return typeof value === "string" && value.trim() ? value : null;
 }
 
 /**
- * APIキーを保存する。空文字を渡すとキーを削除する（`updateUserMetadata` は
- * 他の private metadata キーとは deep merge されるため、この呼び出しが
- * `geminiApiKey` 以外の値に影響することはない）。
+ * 現在の provider 用にAPIキーを保存する。空文字を渡すとキーを削除する。
+ * `updateUserMetadata` は他の private metadata キーとは deep merge されるため、
+ * この呼び出しが provider 別のAPIキー以外の値に影響することはない。
  */
-export async function setGeminiApiKey(
+export async function setAiApiKey(
   userId: string,
   apiKey: string,
 ): Promise<void> {
   const client = await clerkClient();
   await client.users.updateUserMetadata(userId, {
-    privateMetadata: { [METADATA_KEY]: apiKey },
+    privateMetadata: { [getMetadataKey()]: apiKey },
   });
 }
+
+export const getGeminiApiKey = getAiApiKey;
+export const setGeminiApiKey = setAiApiKey;
