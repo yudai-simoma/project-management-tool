@@ -50,8 +50,8 @@ import { findTaskById, getLargeTasks } from "@/lib/computed/projects";
 import { AI_CHAT_GREETING, PANE4_SECTION_IDS } from "@/lib/labels";
 import {
   DEFAULT_AI_PROVIDER_ID,
-  GEMINI_FLASH_LATEST_CONTEXT_TOKENS,
-  GEMINI_FLASH_LATEST_MODEL_ID,
+  DEFAULT_GEMINI_MODEL_ID,
+  getGeminiContextTokens,
 } from "@/lib/ai/model-config";
 import type { AiChatUsage } from "@/lib/api/ai-client";
 import { runOptimistic, insertAt } from "@/lib/optimistic";
@@ -104,8 +104,8 @@ function createInitialAiChatState(): ProjectAiChatState {
     tokenUsageTotal: 0,
     model: {
       provider: DEFAULT_AI_PROVIDER_ID,
-      id: GEMINI_FLASH_LATEST_MODEL_ID,
-      maxContextTokens: GEMINI_FLASH_LATEST_CONTEXT_TOKENS,
+      id: DEFAULT_GEMINI_MODEL_ID,
+      maxContextTokens: getGeminiContextTokens(DEFAULT_GEMINI_MODEL_ID),
     },
   };
 }

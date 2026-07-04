@@ -30,7 +30,7 @@ describe("getAiModelConfig", () => {
   it("AI_MODEL_ID を優先してモデルを切り替える", () => {
     process.env.AI_PROVIDER = "gemini";
     process.env.AI_MODEL_ID = "gemini-2.5-flash";
-    process.env.GEMINI_MODEL_ID = "gemini-2.0-flash";
+    process.env.GEMINI_MODEL_ID = "gemini-2.5-flash-lite";
 
     expect(getAiModelConfig()).toEqual({
       provider: "gemini",
@@ -42,11 +42,34 @@ describe("getAiModelConfig", () => {
   it("後方互換として GEMINI_MODEL_ID も読める", () => {
     process.env.AI_PROVIDER = "gemini";
     delete process.env.AI_MODEL_ID;
-    process.env.GEMINI_MODEL_ID = "gemini-2.0-flash";
+    process.env.GEMINI_MODEL_ID = "gemini-2.5-flash-lite";
 
     expect(getAiModelConfig()).toEqual({
       provider: "gemini",
-      id: "gemini-2.0-flash",
+      id: "gemini-2.5-flash-lite",
+      maxContextTokens: 1_048_576,
+    });
+  });
+
+  it("保存済みモデルIDを指定すると環境変数より優先する", () => {
+    process.env.AI_PROVIDER = "gemini";
+    process.env.AI_MODEL_ID = "gemini-2.5-flash";
+
+    expect(getAiModelConfig("gemini-2.5-flash-lite")).toEqual({
+      provider: "gemini",
+      id: "gemini-2.5-flash-lite",
+      maxContextTokens: 1_048_576,
+    });
+  });
+
+  it("未対応モデルIDは既定モデルに倒す", () => {
+    process.env.AI_PROVIDER = "gemini";
+    process.env.AI_MODEL_ID = "unknown-model";
+    delete process.env.GEMINI_MODEL_ID;
+
+    expect(getAiModelConfig()).toEqual({
+      provider: "gemini",
+      id: "gemini-2.5-flash",
       maxContextTokens: 1_048_576,
     });
   });

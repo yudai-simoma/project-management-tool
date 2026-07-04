@@ -43,7 +43,7 @@ type GlobalHeaderProps = {
 /**
  * ユーザーメニュー（Avatar + DropdownMenu）。
  *
- * 「Gemini APIキー設定」から `ApiKeySettingsDialog` を開く（§2.5, §6.3 決定）。
+ * 「Gemini API・モデル設定」から `ApiKeySettingsDialog` を開く（§2.5, §6.3 決定）。
  * 「プロフィール」は Clerk の `openUserProfile()`（Clerkが提供するプロフィール編集
  * モーダル）を開く。「ログアウト」は Clerk の `signOut()` を呼び、`/sign-in` へ遷移する
  * （セクション3で実データ接続、ダミーのno-opから置き換え）。
@@ -89,7 +89,7 @@ function UserMenu() {
           </DropdownMenuGroup>
           <DropdownMenuItem onClick={() => setApiKeyDialogOpen(true)}>
             <KeyRound />
-            Gemini APIキー設定
+            Gemini API・モデル設定
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => clerk.openUserProfile({})}>

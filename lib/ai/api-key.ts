@@ -8,15 +8,28 @@
 
 import { clerkClient } from "@clerk/nextjs/server";
 
-import { getAiModelConfig } from "@/lib/ai/model";
-import { AI_PROVIDER_GEMINI, type AiProviderId } from "@/lib/ai/model-config";
+import {
+  AI_PROVIDER_GEMINI,
+  getConfiguredGeminiModelId,
+  resolveGeminiModelId,
+  type AiProviderId,
+  type GeminiModelId,
+} from "@/lib/ai/model-config";
 
 const METADATA_KEY_BY_PROVIDER: Record<AiProviderId, string> = {
   [AI_PROVIDER_GEMINI]: "geminiApiKey",
 };
 
+const MODEL_METADATA_KEY_BY_PROVIDER: Record<AiProviderId, string> = {
+  [AI_PROVIDER_GEMINI]: "geminiModelId",
+};
+
 function getMetadataKey(): string {
-  return METADATA_KEY_BY_PROVIDER[getAiModelConfig().provider];
+  return METADATA_KEY_BY_PROVIDER[AI_PROVIDER_GEMINI];
+}
+
+function getModelMetadataKey(): string {
+  return MODEL_METADATA_KEY_BY_PROVIDER[AI_PROVIDER_GEMINI];
 }
 
 /** 現在の provider 用に保存済みのAPIキーを返す。未設定（空文字含む）なら `null`。 */
@@ -25,6 +38,37 @@ export async function getAiApiKey(userId: string): Promise<string | null> {
   const user = await client.users.getUser(userId);
   const value = user.privateMetadata[getMetadataKey()];
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+/** 現在の provider 用に保存済みのモデルIDを返す。未設定なら既定モデルを返す。 */
+export async function getAiModelId(userId: string): Promise<GeminiModelId> {
+  const client = await clerkClient();
+  const user = await client.users.getUser(userId);
+  const value = user.privateMetadata[getModelMetadataKey()];
+  return typeof value === "string"
+    ? (resolveGeminiModelId(value) ?? getConfiguredGeminiModelId())
+    : getConfiguredGeminiModelId();
+}
+
+/** APIキーとモデルIDを一度の Clerk 読み取りで取得する。 */
+export async function getAiSettings(
+  userId: string,
+): Promise<{ apiKey: string | null; modelId: GeminiModelId }> {
+  const client = await clerkClient();
+  const user = await client.users.getUser(userId);
+  const apiKeyValue = user.privateMetadata[getMetadataKey()];
+  const modelValue = user.privateMetadata[getModelMetadataKey()];
+
+  return {
+    apiKey:
+      typeof apiKeyValue === "string" && apiKeyValue.trim()
+        ? apiKeyValue
+        : null,
+    modelId:
+      typeof modelValue === "string"
+        ? (resolveGeminiModelId(modelValue) ?? getConfiguredGeminiModelId())
+        : getConfiguredGeminiModelId(),
+  };
 }
 
 /**
@@ -39,6 +83,33 @@ export async function setAiApiKey(
   const client = await clerkClient();
   await client.users.updateUserMetadata(userId, {
     privateMetadata: { [getMetadataKey()]: apiKey },
+  });
+}
+
+/** 現在の provider 用にモデルIDを保存する。 */
+export async function setAiModelId(
+  userId: string,
+  modelId: GeminiModelId,
+): Promise<void> {
+  const client = await clerkClient();
+  await client.users.updateUserMetadata(userId, {
+    privateMetadata: { [getModelMetadataKey()]: modelId },
+  });
+}
+
+/** APIキーとモデルIDをまとめて保存する。apiKey が未指定ならキーは変更しない。 */
+export async function setAiSettings(
+  userId: string,
+  input: { apiKey?: string; modelId: GeminiModelId },
+): Promise<void> {
+  const client = await clerkClient();
+  await client.users.updateUserMetadata(userId, {
+    privateMetadata: {
+      [getModelMetadataKey()]: input.modelId,
+      ...(input.apiKey !== undefined
+        ? { [getMetadataKey()]: input.apiKey }
+        : {}),
+    },
   });
 }
 

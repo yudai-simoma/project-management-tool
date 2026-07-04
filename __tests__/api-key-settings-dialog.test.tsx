@@ -1,14 +1,23 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 vi.mock("@/lib/api/ai-client", () => ({
-  fetchApiKeyStatus: vi.fn(async () => ({ configured: false })),
-  saveApiKeyApi: vi.fn(),
-  clearApiKeyApi: vi.fn(),
+  fetchApiKeyStatus: vi.fn(async () => ({
+    configured: false,
+    modelId: "gemini-2.5-flash",
+  })),
+  saveApiKeyApi: vi.fn(async () => ({
+    configured: true,
+    modelId: "gemini-2.5-flash",
+  })),
+  clearApiKeyApi: vi.fn(async () => ({
+    configured: false,
+    modelId: "gemini-2.5-flash",
+  })),
 }));
 
 import { ApiKeySettingsDialog } from "@/components/workspace/ApiKeySettingsDialog";
-import { fetchApiKeyStatus } from "@/lib/api/ai-client";
+import { fetchApiKeyStatus, saveApiKeyApi } from "@/lib/api/ai-client";
 
 describe("ApiKeySettingsDialog", () => {
   beforeEach(() => {
@@ -29,5 +38,22 @@ describe("ApiKeySettingsDialog", () => {
     expect(
       screen.getByRole("link", { name: "Google AI Studio を開く" }),
     ).toHaveAttribute("href", "https://aistudio.google.com/app/apikey");
+  });
+
+  it("APIキー保存時に選択中のモデルIDも保存する", async () => {
+    render(<ApiKeySettingsDialog open onOpenChange={vi.fn()} />);
+
+    await screen.findByText(/未設定です/);
+    fireEvent.change(screen.getByLabelText("APIキー"), {
+      target: { value: "AIza-xxx" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(saveApiKeyApi).toHaveBeenCalledWith({
+        apiKey: "AIza-xxx",
+        modelId: "gemini-2.5-flash",
+      });
+    });
   });
 });

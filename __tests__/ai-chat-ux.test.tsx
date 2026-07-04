@@ -39,7 +39,7 @@ const projects: Project[] = [
 
 const defaultModel: ProjectAiChatModel = {
   provider: "gemini",
-  id: "gemini-flash-latest",
+  id: "gemini-2.5-flash",
   maxContextTokens: 1_000,
 };
 

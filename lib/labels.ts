@@ -69,7 +69,7 @@ export const AI_CHAT_GREETING =
   "このプロジェクトについて、タスクの追加・編集・完了報告などお手伝いします。何をしますか？";
 
 export const AI_NO_API_KEY_MESSAGE =
-  "Gemini APIキーが未設定です。画面右上のユーザーメニュー「Gemini APIキー設定」から、あなた個人のAPIキーを登録してください。登録すると、実際のAIによる進捗サマリー・壁打ちアシスタントが利用できます。";
+  "Gemini APIキーが未設定です。画面右上のユーザーメニュー「Gemini API・モデル設定」から、あなた個人のAPIキーを登録してください。登録すると、実際のAIによる進捗サマリー・壁打ちアシスタントが利用できます。";
 
 export const AI_CHAT_ERROR_MESSAGE =
   "AIアシスタントの呼び出しに失敗しました。時間を置いて再度お試しください。";

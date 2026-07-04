@@ -4,26 +4,32 @@
  */
 
 import { apiFetch } from "@/lib/api/http";
+import type { AiModelConfig, GeminiModelId } from "@/lib/ai/model-config";
 import type { AiAction } from "@/lib/ai/tools";
-import type { AiModelConfig } from "@/lib/ai/model-config";
 import type { Member, Project } from "@/lib/schema";
 
 // ===== APIキー設定（BYOK） =====
 
-export function fetchApiKeyStatus(): Promise<{ configured: boolean }> {
+export type AiApiKeyStatus = {
+  configured: boolean;
+  modelId: GeminiModelId;
+};
+
+export function fetchApiKeyStatus(): Promise<AiApiKeyStatus> {
   return apiFetch("/api/ai/api-key");
 }
 
-export function saveApiKeyApi(
-  apiKey: string,
-): Promise<{ configured: boolean }> {
+export function saveApiKeyApi(input: {
+  apiKey?: string;
+  modelId: GeminiModelId;
+}): Promise<AiApiKeyStatus> {
   return apiFetch("/api/ai/api-key", {
     method: "PUT",
-    body: JSON.stringify({ apiKey }),
+    body: JSON.stringify(input),
   });
 }
 
-export function clearApiKeyApi(): Promise<{ configured: boolean }> {
+export function clearApiKeyApi(): Promise<AiApiKeyStatus> {
   return apiFetch("/api/ai/api-key", { method: "DELETE" });
 }
 

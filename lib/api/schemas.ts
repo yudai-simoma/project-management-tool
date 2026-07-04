@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 
+import { GEMINI_MODEL_IDS } from "@/lib/ai/model-config";
 import {
   memberSchema,
   projectSchema,
@@ -99,7 +100,8 @@ export const updateTaskSchema = z
 // ===== AI（Gemini実接続、BYOK） =====
 
 export const aiApiKeySchema = z.object({
-  apiKey: z.string().min(1),
+  apiKey: z.string().min(1).optional(),
+  modelId: z.enum(GEMINI_MODEL_IDS),
 });
 
 export const geminiApiKeySchema = aiApiKeySchema;

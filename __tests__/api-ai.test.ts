@@ -8,14 +8,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * （`docs/backend-implementation-plan.md` セクション5の完了条件）。
  */
 vi.mock("@/lib/ai/api-key", () => ({
-  getAiApiKey: vi.fn(),
   setAiApiKey: vi.fn(),
+  getAiSettings: vi.fn(),
+  setAiSettings: vi.fn(),
 }));
 vi.mock("@/lib/ai/model", () => ({
   createAiModel: vi.fn(() => ({ modelId: "fake-model" })),
-  getAiModelConfig: vi.fn(() => ({
+  getAiModelConfig: vi.fn((modelId?: string | null) => ({
     provider: "gemini",
-    id: "gemini-flash-latest",
+    id: modelId ?? "gemini-2.5-flash",
     maxContextTokens: 1048576,
   })),
 }));
@@ -79,45 +80,100 @@ beforeEach(() => {
 
 describe("GET /api/ai/api-key", () => {
   it("APIキーが設定済みなら configured: true を返す", async () => {
-    asMock(apiKeyLib.getAiApiKey).mockResolvedValue("AIza-xxx");
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: "AIza-xxx",
+      modelId: "gemini-2.5-flash",
+    });
     const res = await GET();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ configured: true });
+    expect(await res.json()).toEqual({
+      configured: true,
+      modelId: "gemini-2.5-flash",
+    });
   });
 
   it("APIキー未設定なら configured: false を返す", async () => {
-    asMock(apiKeyLib.getAiApiKey).mockResolvedValue(null);
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: null,
+      modelId: "gemini-2.5-flash-lite",
+    });
     const res = await GET();
-    expect(await res.json()).toEqual({ configured: false });
+    expect(await res.json()).toEqual({
+      configured: false,
+      modelId: "gemini-2.5-flash-lite",
+    });
   });
 });
 
 describe("PUT /api/ai/api-key", () => {
   it("APIキーを保存する", async () => {
-    const res = await PUT(jsonRequest({ apiKey: "AIza-xxx" }));
-    expect(apiKeyLib.setAiApiKey).toHaveBeenCalledWith("user_1", "AIza-xxx");
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: "AIza-xxx",
+      modelId: "gemini-2.5-flash",
+    });
+
+    const res = await PUT(
+      jsonRequest({ apiKey: "AIza-xxx", modelId: "gemini-2.5-flash" }),
+    );
+    expect(apiKeyLib.setAiSettings).toHaveBeenCalledWith("user_1", {
+      apiKey: "AIza-xxx",
+      modelId: "gemini-2.5-flash",
+    });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ configured: true });
+    expect(await res.json()).toEqual({
+      configured: true,
+      modelId: "gemini-2.5-flash",
+    });
+  });
+
+  it("APIキーを入れずにモデルだけ保存できる", async () => {
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: null,
+      modelId: "gemini-2.5-flash-lite",
+    });
+
+    const res = await PUT(jsonRequest({ modelId: "gemini-2.5-flash-lite" }));
+    expect(apiKeyLib.setAiSettings).toHaveBeenCalledWith("user_1", {
+      modelId: "gemini-2.5-flash-lite",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      configured: false,
+      modelId: "gemini-2.5-flash-lite",
+    });
   });
 
   it("空のAPIキーはバリデーションエラー(400)になる", async () => {
-    const res = await PUT(jsonRequest({ apiKey: "" }));
+    const res = await PUT(
+      jsonRequest({ apiKey: "", modelId: "gemini-2.5-flash" }),
+    );
     expect(res.status).toBe(400);
-    expect(apiKeyLib.setAiApiKey).not.toHaveBeenCalled();
+    expect(apiKeyLib.setAiSettings).not.toHaveBeenCalled();
   });
 });
 
 describe("DELETE /api/ai/api-key", () => {
   it("空文字を保存してキーを削除する", async () => {
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: null,
+      modelId: "gemini-2.5-flash-lite",
+    });
+
     const res = await DELETE();
     expect(apiKeyLib.setAiApiKey).toHaveBeenCalledWith("user_1", "");
-    expect(await res.json()).toEqual({ configured: false });
+    expect(await res.json()).toEqual({
+      configured: false,
+      modelId: "gemini-2.5-flash-lite",
+    });
   });
 });
 
 describe("POST /api/ai/summary", () => {
   it("APIキー未設定なら Gemini を呼ばずフォールバック文言を返す", async () => {
-    asMock(apiKeyLib.getAiApiKey).mockResolvedValue(null);
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: null,
+      modelId: "gemini-2.5-flash-lite",
+    });
     const res = await POST_SUMMARY(
       jsonRequest({ project, categoryName: "プロダクト開発" }),
     );
@@ -131,7 +187,10 @@ describe("POST /api/ai/summary", () => {
   });
 
   it("APIキー設定済みなら Gemini の応答をそのまま返す", async () => {
-    asMock(apiKeyLib.getAiApiKey).mockResolvedValue("AIza-xxx");
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: "AIza-xxx",
+      modelId: "gemini-2.5-flash",
+    });
     asMock(generateText).mockResolvedValue({ text: "  順調です。  " } as never);
 
     const res = await POST_SUMMARY(
@@ -146,7 +205,10 @@ describe("POST /api/ai/summary", () => {
   });
 
   it("Gemini呼び出しが失敗したら502を返す", async () => {
-    asMock(apiKeyLib.getAiApiKey).mockResolvedValue("AIza-xxx");
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: "AIza-xxx",
+      modelId: "gemini-2.5-flash",
+    });
     asMock(generateText).mockRejectedValue(new Error("boom"));
 
     const res = await POST_SUMMARY(
@@ -171,7 +233,10 @@ describe("POST /api/ai/chat", () => {
   };
 
   it("APIキー未設定なら Gemini を呼ばずフォールバック案内を返す", async () => {
-    asMock(apiKeyLib.getAiApiKey).mockResolvedValue(null);
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: null,
+      modelId: "gemini-2.5-flash-lite",
+    });
     const res = await POST_CHAT(jsonRequest(chatBody));
 
     expect(res.status).toBe(200);
@@ -185,14 +250,17 @@ describe("POST /api/ai/chat", () => {
     expect(body.usage).toBeNull();
     expect(body.model).toEqual({
       provider: "gemini",
-      id: "gemini-flash-latest",
+      id: "gemini-2.5-flash-lite",
       maxContextTokens: 1048576,
     });
     expect(generateText).not.toHaveBeenCalled();
   });
 
   it("tool callingの結果をactionsに変換し、テキスト応答をそのまま返す", async () => {
-    asMock(apiKeyLib.getAiApiKey).mockResolvedValue("AIza-xxx");
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: "AIza-xxx",
+      modelId: "gemini-2.5-flash",
+    });
     asMock(generateText).mockResolvedValue({
       text: "「要件定義」を完了にしました。",
       toolResults: [
@@ -222,13 +290,16 @@ describe("POST /api/ai/chat", () => {
     });
     expect(body.model).toEqual({
       provider: "gemini",
-      id: "gemini-flash-latest",
+      id: "gemini-2.5-flash",
       maxContextTokens: 1048576,
     });
   });
 
   it("proposeTasksの結果はtaskProposal形式で返し、actionsには含めない", async () => {
-    asMock(apiKeyLib.getAiApiKey).mockResolvedValue("AIza-xxx");
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: "AIza-xxx",
+      modelId: "gemini-2.5-flash",
+    });
     asMock(generateText).mockResolvedValue({
       text: "",
       toolResults: [
@@ -255,7 +326,10 @@ describe("POST /api/ai/chat", () => {
   });
 
   it("エラー扱いのtool結果はactionsから除外する", async () => {
-    asMock(apiKeyLib.getAiApiKey).mockResolvedValue("AIza-xxx");
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: "AIza-xxx",
+      modelId: "gemini-2.5-flash",
+    });
     asMock(generateText).mockResolvedValue({
       text: "見つかりませんでした。",
       toolResults: [
@@ -272,7 +346,10 @@ describe("POST /api/ai/chat", () => {
   });
 
   it("Gemini呼び出しが失敗したら502を返す", async () => {
-    asMock(apiKeyLib.getAiApiKey).mockResolvedValue("AIza-xxx");
+    asMock(apiKeyLib.getAiSettings).mockResolvedValue({
+      apiKey: "AIza-xxx",
+      modelId: "gemini-2.5-flash",
+    });
     asMock(generateText).mockRejectedValue(new Error("boom"));
 
     const res = await POST_CHAT(jsonRequest(chatBody));

@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { generateText, stepCountIs } from "ai";
 import { NextResponse } from "next/server";
 
-import { getAiApiKey } from "@/lib/ai/api-key";
+import { getAiSettings } from "@/lib/ai/api-key";
 import { createAiModel, getAiModelConfig } from "@/lib/ai/model";
 import { buildChatSystemPrompt } from "@/lib/ai/prompts";
 import { buildAiTools, type AiAction } from "@/lib/ai/tools";
@@ -23,9 +23,9 @@ export async function POST(request: Request) {
   if (!parsed.success) return zodErrorResponse(parsed.error);
 
   const { userId } = await auth();
-  const apiKey = await getAiApiKey(userId!);
-  const model = getAiModelConfig();
-  if (!apiKey) {
+  const settings = await getAiSettings(userId!);
+  const model = getAiModelConfig(settings.modelId);
+  if (!settings.apiKey) {
     return NextResponse.json({
       source: "fallback",
       reply: { kind: "text", content: AI_NO_API_KEY_MESSAGE },
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await generateText({
-      model: createAiModel(apiKey),
+      model: createAiModel(settings.apiKey, model),
       system: buildChatSystemPrompt({ project, categoryName, members }),
       messages: [
         ...history.map((h) => ({ role: h.role, content: h.content }) as const),

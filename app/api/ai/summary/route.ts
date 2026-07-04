@@ -2,8 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { generateText } from "ai";
 import { NextResponse } from "next/server";
 
-import { getAiApiKey } from "@/lib/ai/api-key";
-import { createAiModel } from "@/lib/ai/model";
+import { getAiSettings } from "@/lib/ai/api-key";
+import { createAiModel, getAiModelConfig } from "@/lib/ai/model";
 import { buildSummaryPrompt, buildSummarySystemPrompt } from "@/lib/ai/prompts";
 import { requireOrgId } from "@/lib/api/auth";
 import { readJsonBody, zodErrorResponse } from "@/lib/api/respond";
@@ -19,8 +19,8 @@ export async function POST(request: Request) {
   if (!parsed.success) return zodErrorResponse(parsed.error);
 
   const { userId } = await auth();
-  const apiKey = await getAiApiKey(userId!);
-  if (!apiKey) {
+  const settings = await getAiSettings(userId!);
+  if (!settings.apiKey) {
     return NextResponse.json({
       source: "fallback",
       summary: AI_NO_API_KEY_MESSAGE,
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await generateText({
-      model: createAiModel(apiKey),
+      model: createAiModel(settings.apiKey, getAiModelConfig(settings.modelId)),
       system: buildSummarySystemPrompt(),
       prompt: buildSummaryPrompt(project, categoryName),
     });

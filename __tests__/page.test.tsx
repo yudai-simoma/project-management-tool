@@ -39,7 +39,10 @@ vi.mock("@clerk/nextjs/server", () => ({
 // `__tests__/api-ai.test.ts`・`__tests__/ai-tools.test.ts` に委ねる）。
 vi.mock("@/lib/api/ai-client", () => ({
   fetchAiSummary: vi.fn(async () => ({ source: "fallback", summary: "" })),
-  fetchApiKeyStatus: vi.fn(async () => ({ configured: false })),
+  fetchApiKeyStatus: vi.fn(async () => ({
+    configured: false,
+    modelId: "gemini-2.5-flash",
+  })),
   saveApiKeyApi: vi.fn(),
   clearApiKeyApi: vi.fn(),
   sendAiChatMessage: vi.fn(),

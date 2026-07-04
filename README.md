@@ -25,13 +25,16 @@ npm run dev
 
 `.env.example` に必要なキー名をまとめている。`.env.local`（gitignore対象）にコピーして値を埋める。
 
-| 変数名                              | 必須                     | 取得元・説明                                                                                                                                                                                          |
-| ------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`                       | ✅                       | Neon コンソール → Connect → Connection string。`drizzle-orm/neon-http`（HTTP経由）を使うため pooled connection の文字列でよい                                                                          |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`  | ✅                       | Clerk Dashboard → API Keys                                                                                                                                                                              |
-| `CLERK_SECRET_KEY`                   | ✅                       | Clerk Dashboard → API Keys                                                                                                                                                                              |
-| `SEED_ORG_ID`                        | 開発時のみ（`db:seed`用） | `npm run db:seed` の投入先組織ID（`org_xxx`）。Clerkでアプリの組織を作成した後、Dashboard の Organizations 一覧で確認する。本番では未使用                                                              |
-| `GEMINI_MODEL_ID`                    | 任意                      | AI機能で使うGeminiモデルIDの上書き（既定値 `gemini-flash-latest`）。Gemini APIキー自体はBYOK方針のためここには置かない（ユーザーが画面右上「Gemini APIキー設定」から個人単位で登録し、Clerkユーザーのprivate metadataに保存される） |
+| 変数名                              | 必須                      | 取得元・説明                                                                                                                              |
+| ----------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                      | ✅                        | Neon コンソール → Connect → Connection string。`drizzle-orm/neon-http`（HTTP経由）を使うため pooled connection の文字列でよい             |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✅                        | Clerk Dashboard → API Keys                                                                                                                |
+| `CLERK_SECRET_KEY`                  | ✅                        | Clerk Dashboard → API Keys                                                                                                                |
+| `SEED_ORG_ID`                       | 開発時のみ（`db:seed`用） | `npm run db:seed` の投入先組織ID（`org_xxx`）。Clerkでアプリの組織を作成した後、Dashboard の Organizations 一覧で確認する。本番では未使用 |
+| `APPROVAL_REQUIRED`                 | 任意                      | 会員承認制を有効にするか（既定値 `true`）。Vercel の提出用URLを承認前の確認者にも見せたい場合は `false` にする                            |
+| `AI_PROVIDER`                       | 任意                      | AI provider（現在の実装は `gemini` のみ）                                                                                                 |
+| `AI_MODEL_ID`                       | 任意                      | 未設定ユーザーの既定GeminiモデルID（既定値 `gemini-2.5-flash`）。ユーザーごとのモデルは画面右上「Gemini API・モデル設定」から変更できる   |
+| `GEMINI_MODEL_ID`                   | 任意                      | 後方互換用。未設定なら `AI_MODEL_ID` → `GEMINI_MODEL_ID` → 既定値の順で解決する                                                           |
 
 Clerk側の事前設定（Dashboard の初期設定として一度だけ必要）:
 
@@ -92,7 +95,7 @@ __tests__/          テスト
 
 1. Neon でプロジェクトを作成し、`DATABASE_URL` を発行する
 2. Clerk でアプリケーションを作成し、本番用インスタンスのキーを発行する（開発用インスタンスのキーとは別。「環境変数」節の事前設定を本番インスタンス側でも行う）
-3. Vercel のプロジェクト設定 → Environment Variables に、上記「環境変数」表の `DATABASE_URL`・`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`・`CLERK_SECRET_KEY` を設定する（`SEED_ORG_ID` は本番では不要。`GEMINI_MODEL_ID` は既定モデルのままでよければ未設定でよい）
+3. Vercel のプロジェクト設定 → Environment Variables に、上記「環境変数」表の `DATABASE_URL`・`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`・`CLERK_SECRET_KEY` を設定する（`SEED_ORG_ID` は本番では不要。提出用URLを承認なしで確認できるようにする場合は `APPROVAL_REQUIRED=false` を設定する。`AI_MODEL_ID` は既定モデルのままでよければ未設定でよい）
 4. デプロイ前に一度ローカルから `npm run db:migrate` を実行し、本番DBにテーブルを作成しておく（Vercelのビルド時にはマイグレーションを自動実行しないため）
 5. `git push` などでVercelにデプロイする（`next build` が通ることは `npm run build` で事前確認済み）
 6. デプロイ後、Clerk Dashboard の「Paths」設定で本番URLを許可オリジンに追加する

@@ -11,16 +11,14 @@ import type { LanguageModel } from "ai";
 
 import {
   AI_PROVIDER_GEMINI,
-  GEMINI_FLASH_LATEST_MODEL_ID,
   getGeminiContextTokens,
+  getConfiguredGeminiModelId,
   parseAiProviderId,
+  resolveGeminiModelId,
   type AiModelConfig,
 } from "@/lib/ai/model-config";
 
-const AI_MODEL_ID_ENV = "AI_MODEL_ID";
-const GEMINI_MODEL_ID_ENV = "GEMINI_MODEL_ID";
-
-export function getAiModelConfig(): AiModelConfig {
+export function getAiModelConfig(modelId?: string | null): AiModelConfig {
   const provider = parseAiProviderId(process.env.AI_PROVIDER);
   if (!provider) {
     throw new Error(
@@ -30,23 +28,22 @@ export function getAiModelConfig(): AiModelConfig {
 
   switch (provider) {
     case AI_PROVIDER_GEMINI: {
-      const modelId =
-        process.env[AI_MODEL_ID_ENV]?.trim() ||
-        process.env[GEMINI_MODEL_ID_ENV]?.trim() ||
-        GEMINI_FLASH_LATEST_MODEL_ID;
+      const resolvedModelId =
+        resolveGeminiModelId(modelId) ?? getConfiguredGeminiModelId();
 
       return {
         provider,
-        id: modelId,
-        maxContextTokens: getGeminiContextTokens(modelId),
+        id: resolvedModelId,
+        maxContextTokens: getGeminiContextTokens(resolvedModelId),
       };
     }
   }
 }
 
-export function createAiModel(apiKey: string): LanguageModel {
-  const config = getAiModelConfig();
-
+export function createAiModel(
+  apiKey: string,
+  config = getAiModelConfig(),
+): LanguageModel {
   switch (config.provider) {
     case AI_PROVIDER_GEMINI: {
       const google = createGoogleGenerativeAI({ apiKey });
