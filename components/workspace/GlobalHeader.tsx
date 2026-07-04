@@ -7,6 +7,7 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { type MainView } from "@/lib/schema";
 import { MAIN_VIEW_LABEL } from "@/lib/labels";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -38,6 +39,7 @@ type GlobalHeaderProps = {
   projectName: string;
   mainView: MainView;
   onMainViewChange: (view: MainView) => void;
+  demoModeActive: boolean;
 };
 
 /**
@@ -118,10 +120,26 @@ export function GlobalHeader({
   projectName,
   mainView,
   onMainViewChange,
+  demoModeActive,
 }: GlobalHeaderProps) {
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
       <OrgSwitcher />
+
+      {demoModeActive && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Badge variant="warning" size="xs" className="shrink-0">
+                デモモード
+              </Badge>
+            }
+          />
+          <TooltipContent side="bottom">
+            承認待ちのユーザーにも公開されています（APPROVAL_REQUIRED=false）
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       <Tabs
         value={mainView}

@@ -5,6 +5,7 @@ import { Workspace } from "@/components/workspace/Workspace";
 import workspaceData from "@/data/workspace.json";
 import { listProjectsWithTasks } from "@/db/repositories/projects";
 import { listActiveMembers } from "@/lib/clerk/org-members";
+import { isApprovalRequired } from "@/lib/auth/approval";
 import { workspaceSchema } from "@/lib/schema";
 
 // DB（Neon）から都度データを取得するため、ビルド時の静的プリレンダリング対象にしない。
@@ -39,6 +40,7 @@ export default async function Page() {
       initialMembers={members}
       initialProjects={projects}
       workspace={wsResult.data}
+      demoModeActive={!isApprovalRequired()}
     />
   );
 }

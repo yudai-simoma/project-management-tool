@@ -89,6 +89,8 @@ type WorkspaceProps = {
   initialMembers: Member[];
   initialProjects: Project[];
   workspace: { name: string; icon: string };
+  /** `APPROVAL_REQUIRED=false` で承認ゲートを外している間 `true`（`lib/auth/approval.ts`）。 */
+  demoModeActive: boolean;
 };
 
 function createInitialAiChatState(): ProjectAiChatState {
@@ -120,6 +122,7 @@ export function Workspace({
   initialMembers,
   initialProjects,
   workspace,
+  demoModeActive,
 }: WorkspaceProps) {
   const [members] = useState<Member[]>(initialMembers);
   const [projects, setProjects] = useState<Project[]>(initialProjects);
@@ -578,6 +581,7 @@ export function Workspace({
           projectName={activeProject?.name ?? ""}
           mainView={mainView}
           onMainViewChange={setMainView}
+          demoModeActive={demoModeActive}
         />
         {/* SidebarInset 自体が <main> を出すので、内側は <div> で組み、
             Pane 2 / Pane 3 / Pane 4（もしくは全体ダッシュボード）を横並びにする。 */}

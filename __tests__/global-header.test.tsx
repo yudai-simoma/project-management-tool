@@ -27,6 +27,7 @@ const baseProps = {
   projectName: "モバイルアプリ新機能開発",
   mainView: "workspace" as const,
   onMainViewChange: vi.fn(),
+  demoModeActive: false,
 };
 
 beforeEach(() => {
@@ -83,5 +84,15 @@ describe("GlobalHeader のユーザーメニュー", () => {
     fireEvent.click(screen.getByText("ログアウト"));
 
     expect(signOut).toHaveBeenCalledWith({ redirectUrl: "/sign-in" });
+  });
+
+  it("demoModeActive が true のときだけ「デモモード」バッジを表示する", () => {
+    useUserMock.mockReturnValue({ isLoaded: false, user: null });
+
+    const { rerender } = render(<GlobalHeader {...baseProps} />);
+    expect(screen.queryByText("デモモード")).not.toBeInTheDocument();
+
+    rerender(<GlobalHeader {...baseProps} demoModeActive />);
+    expect(screen.getByText("デモモード")).toBeInTheDocument();
   });
 });
